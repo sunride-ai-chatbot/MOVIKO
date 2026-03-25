@@ -7,6 +7,8 @@
   <style>
     :root{
       --bg:#05080d;
+      --panel:#0b1320;
+      --panel2:#0d1726;
       --text:#f4f7fb;
       --muted:#9fb0c8;
       --gold:#f2c318;
@@ -26,27 +28,24 @@
     button,input{font:inherit}
     a{text-decoration:none;color:inherit}
 
+    /* Splash */
     #splash-screen{
       position:fixed; inset:0; background:#000;
       display:grid; place-items:center; z-index:3000;
-      transition:opacity .45s ease;
+      opacity:1; transition:opacity .45s ease;
     }
     #splash-screen.fade-out{opacity:0; pointer-events:none}
     #splash-video{
-      width:min(82vw,700px);
+      width:min(82vw,760px);
       max-height:82vh;
       object-fit:contain;
+      background:#000;
     }
-    #splash-overlay{
-      position:absolute; inset:0;
-      display:grid; place-items:center;
-      color:#fff; font-size:62px;
-      background:rgba(0,0,0,.15);
-      cursor:pointer;
-    }
+    #splash-video::-webkit-media-controls{display:none !important}
 
     .app-shell{max-width:1500px; margin:0 auto}
 
+    /* Top bar */
     .topbar{
       position:sticky; top:0; z-index:900;
       background:linear-gradient(90deg,rgba(7,12,19,.96),rgba(11,26,43,.96),rgba(7,12,19,.96));
@@ -58,32 +57,28 @@
       grid-template-columns:auto 1fr;
       gap:28px;
       align-items:start;
-      padding:12px 28px 14px;
+      padding:10px 28px 12px;
     }
-
     .brand-block{
       display:flex;
       flex-direction:column;
       gap:10px;
       width:max-content;
     }
-
     .brand-logo{
-      width:300px;
-      max-width:24vw;
+      width:255px;
       height:auto;
       display:block;
     }
-
     .auth-stack{
       display:flex;
       flex-direction:column;
       gap:8px;
-      width:150px;
+      width:120px;
+      margin-top:2px;
     }
-
     .auth-btn{
-      height:36px;
+      height:34px;
       border-radius:999px;
       border:2px solid rgba(255,255,255,.12);
       background:rgba(255,255,255,.02);
@@ -91,6 +86,7 @@
       cursor:pointer;
       transition:.2s ease;
       font-weight:700;
+      letter-spacing:.2px;
     }
     .auth-btn:hover{
       border-color:rgba(255,255,255,.28);
@@ -101,9 +97,9 @@
       display:grid;
       grid-template-columns:minmax(320px,620px);
       justify-content:start;
-      padding-top:10px;
+      align-self:start;
+      padding-top:18px;
     }
-
     .search-box{position:relative}
     .search-box input{
       width:100%;
@@ -126,6 +122,7 @@
       font-size:22px;
     }
 
+    /* Hero */
     .hero{
       display:grid;
       grid-template-columns:1fr 420px;
@@ -133,7 +130,6 @@
       min-height:440px;
       padding:18px 28px 0;
     }
-
     .hero-visual{
       min-height:420px;
       border-radius:0 0 20px 20px;
@@ -144,7 +140,6 @@
         url('placeholder_light_gray_block.png') center/cover no-repeat;
       box-shadow:var(--shadow), inset 0 0 160px rgba(0,0,0,.5);
     }
-
     .hero-panel{
       align-self:end;
       margin-bottom:22px;
@@ -154,13 +149,11 @@
       padding:22px 22px 16px;
       box-shadow:var(--shadow);
     }
-
     .hero-title{
       margin:0 0 10px;
       font-size:34px;
       line-height:1.08;
-}
-
+    }
     .hero-meta{
       display:flex;
       flex-wrap:wrap;
@@ -169,33 +162,28 @@
       font-size:14px;
       margin-bottom:16px;
     }
-
     .chip{
       padding:8px 12px;
       border-radius:999px;
       background:var(--chip);
       border:1px solid rgba(255,255,255,.08);
     }
-
     .imdb-badge{
       background:#f3c016;
       color:#111;
       font-weight:800;
     }
-
     .hero-copy{
       color:#d3dded;
       font-size:14px;
       line-height:1.6;
       margin:0 0 18px;
     }
-
     .action-row{
       display:flex;
       gap:10px;
       flex-wrap:wrap;
     }
-
     .cta{
       height:42px;
       padding:0 18px;
@@ -206,13 +194,13 @@
       cursor:pointer;
       font-weight:700;
     }
-
     .cta.play{
       background:var(--green);
       border-color:transparent;
       color:#fff;
     }
 
+    /* Sections */
     .section{padding:22px 28px}
     .section-head{
       display:flex;
@@ -235,7 +223,6 @@
       grid-template-columns:repeat(auto-fill,minmax(155px,1fr));
       gap:16px;
     }
-
     .card{
       background:linear-gradient(180deg,rgba(18,24,34,.96),rgba(10,13,19,.98));
       border:1px solid rgba(255,255,255,.07);
@@ -248,7 +235,6 @@
       transform:translateY(-4px);
       border-color:rgba(242,195,24,.45);
     }
-
     .poster{
       width:100%;
       aspect-ratio:2/3;
@@ -256,14 +242,12 @@
       display:block;
       background:#0a0d12;
     }
-
     .card-body{padding:11px 12px 14px}
     .card-title{
       font-size:14px;
       font-weight:700;
       min-height:38px;
     }
-
     .card-sub{
       display:flex;
       justify-content:space-between;
@@ -271,12 +255,12 @@
       font-size:12px;
       color:var(--muted);
     }
-
     .rating-mini{
       color:#f4ca33;
       font-weight:700;
     }
 
+    /* Buffering */
     .buffering-screen{
       position:fixed;
       inset:0;
@@ -288,32 +272,31 @@
       opacity:0;
       transition:opacity .25s ease;
     }
-
     .buffering-screen.active{
       visibility:visible;
       opacity:1;
     }
-
     .buffering-wrap{
-      width:380px;
-      height:380px;
+      width:430px;
+      height:430px;
       border-radius:50%;
       overflow:hidden;
       background:transparent;
       display:grid;
       place-items:center;
+      box-shadow:0 0 0 0 transparent;
     }
-
     #buffering-video{
-      width:140%;
-      height:140%;
+      width:170%;
+      height:170%;
       object-fit:cover;
       border-radius:50%;
       transform:scale(1.55);
-      filter:contrast(1.03) saturate(1.04);
-      clip-path:circle(41% at 50% 50%);
+      clip-path:circle(31% at 50% 50%);
+      background:transparent;
     }
 
+    /* Player modal */
     .player-modal{
       position:fixed;
       inset:0;
@@ -322,34 +305,28 @@
       display:none;
       grid-template-columns:1fr 360px;
     }
-
     .player-modal.open{display:grid}
-
     .player-stage{
       padding:28px;
       display:flex;
       flex-direction:column;
       gap:14px;
     }
-
     .player-toolbar{
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap:16px;
     }
-
     .player-title{
       font-size:28px;
       font-weight:800;
     }
-
     .player-actions{
       display:flex;
       gap:10px;
       flex-wrap:wrap;
     }
-
     .player-box{
       flex:1;
       border-radius:22px;
@@ -360,36 +337,30 @@
       position:relative;
       overflow:hidden;
     }
-
     .player-placeholder{
       text-align:center;
       color:#d4e2f5;
       max-width:720px;
       padding:20px;
     }
-
     .player-placeholder .big{
       font-size:46px;
       margin-bottom:14px;
     }
-
     .player-placeholder p{
-color:var(--muted);
+      color:var(--muted);
       line-height:1.7;
     }
-
     .player-side{
       border-right:1px solid rgba(255,255,255,.08);
       background:linear-gradient(180deg,rgba(17,23,33,.98),rgba(7,10,14,.98));
       padding:28px 22px;
       overflow:auto;
     }
-
     .side-title{
       font-size:18px;
       margin:0 0 14px;
     }
-
     .source-card{
       background:rgba(255,255,255,.03);
       border:1px solid rgba(255,255,255,.08);
@@ -398,12 +369,10 @@ color:var(--muted);
       margin-bottom:12px;
       cursor:pointer;
     }
-
     .source-card.active{
       border-color:rgba(242,195,24,.55);
       box-shadow:inset 0 0 0 1px rgba(242,195,24,.2);
     }
-
     .source-top{
       display:flex;
       align-items:center;
@@ -411,23 +380,19 @@ color:var(--muted);
       gap:8px;
       margin-bottom:8px;
     }
-
     .source-quality{
       font-size:15px;
       font-weight:800;
     }
-
     .source-users{
       color:#98c7ff;
       font-size:12px;
     }
-
     .source-name{
       font-size:13px;
       color:#dce6f4;
       line-height:1.45;
     }
-
     .subtitle-pref{
       margin-top:18px;
       padding:14px;
@@ -436,7 +401,6 @@ color:var(--muted);
       border:1px solid rgba(255,255,255,.08);
       color:#d7e1ef;
     }
-
     .muted-line{
       color:var(--muted);
       font-size:13px;
@@ -450,23 +414,18 @@ color:var(--muted);
         border-right:0;
         border-top:1px solid rgba(255,255,255,.08);
       }
-      .brand-logo{
-        max-width:320px;
-        width:100%;
-      }
-      .head-controls{
-        grid-template-columns:1fr;
-      }
+      .brand-logo{max-width:320px;width:100%}
+      .head-controls{grid-template-columns:1fr}
     }
   </style>
 </head>
 <body>
   <div id="splash-screen">
-    <video id="splash-video" autoplay muted playsinline preload="auto" loop>
+    <video id="splash-video" autoplay muted playsinline preload="auto">
       <source src="splash.mp4" type="video/mp4">
       <source src="MOVIE SOLUTION.mp4" type="video/mp4">
+      <source src="MOVIE%20SOLUTION.mp4" type="video/mp4">
     </video>
-    <div id="splash-overlay">▶</div>
   </div>
 
   <div class="app-shell">
@@ -512,7 +471,7 @@ color:var(--muted);
       <section class="section">
         <div class="section-head">
           <h2 class="section-title">המשך צפייה בסרטים</h2>
-          <div class="section-note">Cinemeta / OpenSubtitles / Torrentio נטענים אוטומטית בעת הפתיחה</div>
+          <div class="section-note">IMDb / Torrentio / OpenSubtitles נטענים אוטומטית</div>
         </div>
         <div class="card-list" id="movieGrid"></div>
       </section>
@@ -521,8 +480,7 @@ color:var(--muted);
 
   <div id="buffering-screen" class="buffering-screen">
     <div class="buffering-wrap">
-      <video id="buffering-video" src="buffering.
-mp4" autoplay loop muted playsinline></video>
+      <video id="buffering-video" src="buffering.mp4" autoplay loop muted playsinline></video>
     </div>
   </div>
 
@@ -536,6 +494,7 @@ mp4" autoplay loop muted playsinline></video>
           <button class="cta" id="closePlayerBtn" type="button">סגור</button>
         </div>
       </div>
+
       <div class="player-box">
         <div class="player-placeholder">
           <div class="big">▶</div>
@@ -603,9 +562,10 @@ mp4" autoplay loop muted playsinline></video>
     const heroVisual = $('#heroVisual');
     const bufferingScreen = $('#buffering-screen');
     const bufferingVideo = $('#buffering-video');
-function normalizeMovie(raw){
+
+    function normalizeMovie(raw){
       return {
-        id: raw.imdb_id  raw.id  '',
+        id: raw.imdb_id || raw.id || '',
         name: raw.name || 'Untitled',
         poster: raw.poster || 'placeholder_light_gray_block.png',
         year: raw.year || '--',
@@ -638,16 +598,16 @@ function normalizeMovie(raw){
       state.currentMovie = movie;
       featureTitle.textContent = movie.name;
       featureYear.textContent = movie.year;
-      featureImdb.textContent = IMDb ${movie.imdbRating};
+      featureImdb.textContent = `IMDb ${movie.imdbRating}`;
       featurePlot.textContent = movie.description;
-      heroVisual.style.backgroundImage = linear-gradient(90deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.18) 38%, rgba(0,0,0,.48) 100%), url('${movie.poster}');
+      heroVisual.style.backgroundImage = `linear-gradient(90deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.18) 38%, rgba(0,0,0,.48) 100%), url('${movie.poster}')`;
       playerMovieTitle.textContent = movie.name;
     }
 
     async function loadCatalog(){
       const urls = [
-        ${ADDONS.cinemeta}/catalog/movie/top.json,
-        ${ADDONS.cinemeta}/catalog/movie/popular.json
+        `${ADDONS.cinemeta}/catalog/movie/top.json`,
+        `${ADDONS.cinemeta}/catalog/movie/popular.json`
       ];
 
       for (const url of urls){
@@ -681,7 +641,7 @@ function normalizeMovie(raw){
 
     function parseUsers(name){
       const m =
-        String(name  '').match(/👤\s*(\d+)/) 
+        String(name || '').match(/👤\s*(\d+)/) ||
         String(name || '').match(/seed(?:s|ers)?[:\s]+(\d+)/i);
       return m ? Number(m[1]) : 0;
     }
@@ -690,12 +650,12 @@ function normalizeMovie(raw){
       const picked = { '1080P': null, '4K': null };
 
       streams.forEach(stream => {
-        const quality = parseStreamQuality(stream.name  stream.title  '');
-        const users = parseUsers(stream.name  stream.title  '');
+        const quality = parseStreamQuality(stream.name || stream.title || '');
+        const users = parseUsers(stream.name || stream.title || '');
         const entry = {
           quality,
           users,
-          label: stream.title  stream.name  'Source',
+          label: stream.title || stream.name || 'Source',
           raw: stream
         };
 
@@ -721,16 +681,15 @@ function normalizeMovie(raw){
 
       return [
         { quality:'1080P', users:231, label:`${movie.name} - 1080P / הכי הרבה משתמשים`, raw:null },
-        { quality:'4K', users:88, label:`${movie.
-name} - 4K / הכי הרבה משתמשים`, raw:null }
+        { quality:'4K', users:88, label:`${movie.name} - 4K / הכי הרבה משתמשים`, raw:null }
       ];
     }
 
     async function loadHebrewSubtitle(movie){
       const urls = [
-        ${ADDONS.subtitles}/subtitles/movie/${movie.id}.json,
-        ${ADDONS.subtitlesLegacy}/subtitles/movie/${movie.id}.json,
-        ${ADDONS.wizdom}/subtitles/movie/${movie.id}.json
+        `${ADDONS.subtitles}/subtitles/movie/${movie.id}.json`,
+        `${ADDONS.subtitlesLegacy}/subtitles/movie/${movie.id}.json`,
+        `${ADDONS.wizdom}/subtitles/movie/${movie.id}.json`
       ];
 
       for (const url of urls){
@@ -740,7 +699,7 @@ name} - 4K / הכי הרבה משתמשים`, raw:null }
           const data = await res.json();
           const items = Array.isArray(data.subtitles) ? data.subtitles : Array.isArray(data) ? data : [];
           const heb =
-            items.find(s => String(s.lang  s.language  '').toLowerCase().includes('he')) ||
+            items.find(s => String(s.lang || s.language || '').toLowerCase().includes('he')) ||
             items.find(s => String(s.label || '').includes('עבר'));
           if (heb) return heb;
         }catch(e){}
@@ -753,7 +712,7 @@ name} - 4K / הכי הרבה משתמשים`, raw:null }
       sourceList.innerHTML = '';
       state.sources.forEach((source, idx) => {
         const el = document.createElement('div');
-        el.className = source-card ${idx === 0 ? 'active' : ''};
+        el.className = `source-card ${idx === 0 ? 'active' : ''}`;
         el.innerHTML = `
           <div class="source-top">
             <div class="source-quality">${source.quality}</div>
@@ -771,8 +730,8 @@ name} - 4K / הכי הרבה משתמשים`, raw:null }
       [...sourceList.children].forEach((card, i) => card.classList.toggle('active', i === idx));
 
       if (state.selectedSource){
-        selectedSourceTitle.textContent = ${state.currentMovie.name} · ${state.selectedSource.quality};
-        selectedSourceText.textContent = ${state.selectedSource.label} · ברירת מחדל 1080P. אפשר לעבור ל־4K רק אם קיים מקור.;
+        selectedSourceTitle.textContent = `${state.currentMovie.name} · ${state.selectedSource.quality}`;
+        selectedSourceText.textContent = `${state.selectedSource.label} · ברירת מחדל 1080P. אפשר לעבור ל־4K רק אם קיים מקור.`;
       }
     }
 
@@ -838,35 +797,27 @@ name} - 4K / הכי הרבה משתמשים`, raw:null }
       state.filtered = !q
         ? state.movies
         : state.movies.filter(movie => movie.name.toLowerCase().includes(q));
-renderMovies(state.filtered);
+
+      renderMovies(state.filtered);
       if (state.filtered[0]) setFeatureMovie(state.filtered[0]);
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
+      const splash = document.getElementById('splash-screen');
       const splashVideo = document.getElementById('splash-video');
 
-// ניסיון כפוי להפעיל וידאו
-if (splashVideo) {
-  splashVideo.muted = true;
-  splashVideo.play().catch(() => {});
-}
-      const splash = $('#splash-screen');
-      const splashVideo = $('#splash-video');
-      const splashOverlay = $('#splash-overlay');
-
-      if (splashVideo) splashVideo.play().catch(() => {});
-
-      if (splashOverlay && splashVideo){
-        splashOverlay.addEventListener('click', () => {
-          splashVideo.muted = false;
-          splashVideo.play().catch(() => {});
-          splashOverlay.style.display = 'none';
-        });
+      if (splashVideo) {
+        splashVideo.muted = true;
+        splashVideo.play().catch(() => {});
       }
 
       setTimeout(() => {
-        splash.classList.add('fade-out');
-        setTimeout(() => splash.style.display = 'none', 450);
+        if (splash) {
+          splash.classList.add('fade-out');
+          setTimeout(() => {
+            splash.style.display = 'none';
+          }, 500);
+        }
       }, 8000);
 
       await loadCatalog();

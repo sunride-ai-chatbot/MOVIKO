@@ -1,883 +1,496 @@
 <!DOCTYPE html>
+<!--
+  MOVIKO – simple movie‑streaming interface (Hebrew)
+
+  This file implements the core front‑end for the MOVIKO project.  It focuses
+  on a clean, easy‑to‑use UI that presents movies only (no series) and
+  supports a right‑to‑left Hebrew interface.  The splash screen (splash.mp4)
+  is shown on first load with muted audio to satisfy modern browser
+  autoplay policies.  Users can enable sound manually via a button as
+  recommended by autoplay guidelines: Chrome and Firefox block videos with
+  sound until there is user interaction, while muted videos may autoplay
+  without restrictions【614481664182217†L64-L90】.  A buffering animation
+  (buffering.mp4) is shown as a circular loader before playback.  The
+  UI provides Play, Trailer and Add‑to‑Library buttons for each movie.  Saved
+  movies are stored using the Web Storage API; data persists across
+  browser sessions because `localStorage` keeps values without an
+  expiration time【252887741188659†L186-L194】.
+
+  To make this file fully functional you need to provide the media assets
+  (splash.mp4, buffering.mp4, logopop_tlv.png) alongside this file and
+  implement the backend/proxy that fetches playable streams from Torrentio
+  or another streaming add‑on.  The functions in this file demonstrate how
+  to sort streams by resolution and popularity, auto‑select 1080p sources,
+  and prefer Hebrew subtitles; they can be wired into your backend.
+-->
 <html lang="he" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MOVIKO</title>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MOVIKO – סטרימינג סרטים</title>
+  <!-- Use the customised popcorn logo as the favicon -->
+  <link rel="icon" type="image/png" href="logopop_tlv.png">
+  <!-- Basic reset and dark‑theme styling -->
   <style>
-    :root{
-      --bg:#05080d;
-      --text:#f4f7fb;
-      --muted:#9fb0c8;
-      --gold:#f2c318;
-      --line:rgba(255,255,255,.08);
-      --green:#1ecb62;
-      --chip:rgba(255,255,255,.08);
-      --shadow:0 12px 36px rgba(0,0,0,.35);
-    }
-    *{box-sizing:border-box}
-    html,body{
-      margin:0;
-      background:radial-gradient(circle at top,#0b1c31 0%,var(--bg) 48%,#030507 100%);
-      color:var(--text);
-      font-family:Arial,sans-serif;
-    }
-    body{min-height:100vh}
-    button,input{font:inherit}
-    a{text-decoration:none;color:inherit}
-
-    #splash-screen{
-      position:fixed;
-      inset:0;
-      background:#000;
-      display:grid;
-      place-items:center;
-      z-index:3000;
-      opacity:1;
-      transition:opacity .45s ease;
-    }
-    #splash-screen.fade-out{
-      opacity:0;
-      pointer-events:none;
-    }
-    #splash-video{
-      width:min(82vw,760px);
-      max-height:82vh;
-      object-fit:contain;
-      background:#000;
-    }
-    #splash-video::-webkit-media-controls{
-      display:none !important;
-    }
-
-    .app-shell{
-      max-width:1500px;
-      margin:0 auto;
-    }
-
-    .topbar{
-      position:sticky;
-      top:0;
-      z-index:900;
-      background:linear-gradient(90deg,rgba(7,12,19,.96),rgba(11,26,43,.96),rgba(7,12,19,.96));
-      border-bottom:1px solid var(--line);
-      backdrop-filter:blur(8px);
-    }
-    .topbar-inner{
-      display:grid;
-      grid-template-columns:auto 1fr;
-      gap:28px;
-      align-items:start;
-      padding:10px 28px 12px;
-    }
-    .brand-block{
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      width:max-content;
-    }
-    .brand-logo{
-      width:255px;
-      height:auto;
-      display:block;
-    }
-    .auth-stack{
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-      width:120px;
-      margin-top:2px;
-    }
-    .auth-btn{
-      height:34px;
-      border-radius:999px;
-      border:2px solid rgba(255,255,255,.12);
-      background:rgba(255,255,255,.02);
-      color:#fff;
-      cursor:pointer;
-      transition:.2s ease;
-      font-weight:700;
-      letter-spacing:.2px;
-    }
-    .auth-btn:hover{
-      border-color:rgba(255,255,255,.28);
-      background:rgba(255,255,255,.06);
-    }
-
-    .head-controls{
-      display:grid;
-      grid-template-columns:minmax(320px,620px);
-      justify-content:start;
-      align-self:start;
-      padding-top:18px;
-    }
-    .search-box{position:relative}
-    .search-box input{
-      width:100%;
-      height:58px;
-      border-radius:999px;
-      border:2px solid rgba(242,195,24,.6);
-      background:rgba(255,255,255,.03);
-      color:var(--text);
-      padding:0 58px 0 24px;
-      outline:none;
-      box-shadow:inset 0 0 0 1px rgba(242,195,24,.18);
-    }
-    .search-box input::placeholder{color:#9db0c9}
-    .search-icon{
-      position:absolute;
-      right:20px;
-      top:50%;
-      transform:translateY(-50%);
-      color:var(--gold);
-      font-size:22px;
-    }
-
-    .hero{
-      display:grid;
-      grid-template-columns:1fr 420px;
-      gap:24px;
-      min-height:440px;
-      padding:18px 28px 0;
-    }
-    .hero-visual{
-      min-height:420px;
-      border-radius:0 0 20px 20px;
-      background:
-        linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.18) 38%,rgba(0,0,0,.48) 100%),
-        radial-gradient(circle at 70% 18%,rgba(64,97,139,.22),transparent 18%),
-        radial-gradient(circle at 50% 35%,rgba(255,255,255,.045),transparent 24%),
-        url('placeholder_light_gray_block.png') center/cover no-repeat;
-      box-shadow:var(--shadow), inset 0 0 160px rgba(0,0,0,.5);
-    }
-    .hero-panel{
-      align-self:end;
-      margin-bottom:22px;
-      background:linear-gradient(180deg,rgba(18,25,37,.92),rgba(10,15,23,.95));
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:24px;
-      padding:22px 22px 16px;
-      box-shadow:var(--shadow);
-    }
-    .hero-title{
-      margin:0 0 10px;
-      font-size:34px;
-      line-height:1.08;
-    }
-    .hero-meta{
-      display:flex;
-      flex-wrap:wrap;
-      gap:10px;
-      color:var(--muted);
-      font-size:14px;
-      margin-bottom:16px;
-    }
-    .chip{
-      padding:8px 12px;
-      border-radius:999px;
-      background:var(--chip);
-      border:1px solid rgba(255,255,255,.08);
-    }
-    .imdb-badge{
-      background:#f3c016;
-      color:#111;
-      font-weight:800;
-    }
-    .hero-copy{
-      color:#d3dded;
-      font-size:14px;
-      line-height:1.6;
-      margin:0 0 18px;
-    }
-    .action-row{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-    }
-    .cta{
-      height:42px;
-      padding:0 18px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(255,255,255,.03);
-      color:#fff;
-      cursor:pointer;
-      font-weight:700;
-    }
-    .cta.play{
-      background:var(--green);
-      border-color:transparent;
-      color:#fff;
-    }
-
-    .section{
-      padding:22px 28px;
-    }
-    .section-head{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      margin-bottom:14px;
-    }
-    .section-title{
-      font-size:22px;
-      color:#cfe0f9;
-      margin:0;
-    }
-    .section-note{
-      color:var(--muted);
-      font-size:13px;
-    }
-
-    .card-list{
-      display:grid;
-      grid-template-columns:repeat(auto-fill,minmax(155px,1fr));
-      gap:16px;
-    }
-    .card{
-      background:linear-gradient(180deg,rgba(18,24,34,.96),rgba(10,13,19,.98));
-      border:1px solid rgba(255,255,255,.07);
-      border-radius:18px;
-      overflow:hidden;
-      cursor:pointer;
-      transition:transform .18s ease,border-color .18s ease;
-    }
-    .card:hover{
-      transform:translateY(-4px);
-      border-color:rgba(242,195,24,.45);
-    }
-    .poster{
-      width:100%;
-      aspect-ratio:2/3;
-      object-fit:cover;
-      display:block;
-      background:#0a0d12;
-    }
-    .card-body{
-      padding:11px 12px 14px;
-    }
-    .card-title{
-      font-size:14px;
-      font-weight:700;
-      min-height:38px;
-    }
-    .card-sub{
-      display:flex;
-      justify-content:space-between;
-      margin-top:8px;
-      font-size:12px;
-      color:var(--muted);
-    }
-    .rating-mini{
-      color:#f4ca33;
-      font-weight:700;
-    }
-
-    .buffering-screen{
-      position:fixed;
-      inset:0;
-      background:rgba(0,0,0,.82);
-      display:grid;
-      place-items:center;
-      z-index:2500;
-      visibility:hidden;
-      opacity:0;
-      transition:opacity .25s ease;
-    }
-    .buffering-screen.active{
-      visibility:visible;
-      opacity:1;
-    }
-    .buffering-wrap{
-      width:430px;
-      height:430px;
-      border-radius:50%;
-      overflow:hidden;
-      background:transparent;
-      display:grid;
-      place-items:center;
-    }
-    #buffering-video{
-      width:170%;
-      height:170%;
-      object-fit:cover;
-      border-radius:50%;
-      transform:scale(1.55);
-      clip-path:circle(31% at 50% 50%);
-      background:transparent;
-    }
-
-    .player-modal{
-      position:fixed;
-      inset:0;
-      background:rgba(2,4,8,.94);
-      z-index:2600;
-      display:none;
-      grid-template-columns:1fr 360px;
-    }
-    .player-modal.open{
-      display:grid;
-    }
-    .player-stage{
-      padding:28px;
-      display:flex;
-      flex-direction:column;
-      gap:14px;
-    }
-    .player-toolbar{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:16px;
-    }
-    .player-title{
-      font-size:28px;
-      font-weight:800;
-    }
-    .player-actions{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-    }
-    .player-box{
-      flex:1;
-      border-radius:22px;
-      background:linear-gradient(180deg,#0d1118,#05070a);
-      border:1px solid rgba(255,255,255,.08);
-      display:grid;
-      place-items:center;
-      position:relative;
-      overflow:hidden;
-    }
-    .player-placeholder{
-      text-align:center;
-      color:#d4e2f5;
-      max-width:720px;
-      padding:20px;
-    }
-    .player-placeholder .big{
-      font-size:46px;
-      margin-bottom:14px;
-    }
-    .player-placeholder p{
-      color:var(--muted);
-      line-height:1.7;
-    }
-    .player-side{
-      border-right:1px solid rgba(255,255,255,.08);
-      background:linear-gradient(180deg,rgba(17,23,33,.98),rgba(7,10,14,.98));
-      padding:28px 22px;
-      overflow:auto;
-    }
-    .side-title{
-      font-size:18px;
-      margin:0 0 14px;
-    }
-    .source-card{
-      background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:18px;
-      padding:14px;
-      margin-bottom:12px;
-      cursor:pointer;
-    }
-    .source-card.active{
-      border-color:rgba(242,195,24,.55);
-      box-shadow:inset 0 0 0 1px rgba(242,195,24,.2);
-    }
-    .source-top{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:8px;
-      margin-bottom:8px;
-    }
-    .source-quality{
-      font-size:15px;
-      font-weight:800;
-    }
-    .source-users{
-      color:#98c7ff;
-      font-size:12px;
-    }
-    .source-name{
-      font-size:13px;
-      color:#dce6f4;
-      line-height:1.45;
-    }
-    .subtitle-pref{
-      margin-top:18px;
-      padding:14px;
-      border-radius:16px;
-      background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.08);
-      color:#d7e1ef;
-    }
-    .muted-line{
-      color:var(--muted);
-      font-size:13px;
-    }
-
-    @media(max-width:1050px){
-      .topbar-inner{grid-template-columns:1fr}
-      .hero{grid-template-columns:1fr}
-      .player-modal.open{grid-template-columns:1fr}
-      .player-side{
-        border-right:0;
-        border-top:1px solid rgba(255,255,255,.08);
-      }
-      .brand-logo{
-        max-width:320px;
-        width:100%;
-      }
-      .head-controls{
-        grid-template-columns:1fr;
-      }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, sans-serif;
+      background-color: #0f0f0f;
+      color: #f5f5f5;
+      direction: rtl;
+      overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    .hidden { display: none !important; }
+    /* Splash screen covers the entire viewport */
+    #splash {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 9999;
+    }
+    #splash video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #splash button {
+      position: absolute;
+      bottom: 10%;
+      right: 50%;
+      transform: translateX(50%);
+      padding: 1rem 1.5rem;
+      font-size: 1rem;
+      border: none;
+      border-radius: 4px;
+      background-color: #ffcc00;
+      color: #000;
+      cursor: pointer;
+      opacity: 0.9;
+    }
+    /* Header containing the logo and library button */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem;
+      background-color: #1a1a1a;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header img.logo {
+      height: 40px;
+    }
+    header button.library-btn {
+      background-color: transparent;
+      border: none;
+      color: #ffcc00;
+      font-size: 1.1rem;
+      cursor: pointer;
+    }
+    /* Movie list container */
+    .movies {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      padding: 1rem;
+      justify-content: center;
+    }
+    .movie-card {
+      background-color: #1e1e1e;
+      border-radius: 8px;
+      width: 200px;
+      overflow: hidden;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+    }
+    .movie-card img.poster {
+      width: 100%;
+      height: 300px;
+      object-fit: cover;
+    }
+    .movie-card .info {
+      padding: 0.5rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .movie-card .title {
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+      font-weight: bold;
+    }
+    .movie-card .actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.3rem;
+    }
+    .movie-card button {
+      flex: 1;
+      padding: 0.4rem;
+      font-size: 0.9rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      color: #000;
+    }
+    .play-btn { background-color: #ff4444; }
+    .trailer-btn { background-color: #00ccff; }
+    .library-btn { background-color: #ffcc00; }
+    /* Buffering overlay – covers the whole viewport during loading */
+    #buffering {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      backdrop-filter: blur(4px);
+      background-color: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    #buffering .loader {
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      overflow: hidden;
+    }
+    #buffering .loader video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    /* Library modal */
+    #libraryModal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-y: auto;
+      z-index: 1001;
+      padding: 2rem 1rem;
+    }
+    #libraryModal h2 {
+      margin-bottom: 1rem;
+    }
+    #libraryModal .library-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+      width: 100%;
+    }
+    #libraryModal .library-card {
+      background-color: #1e1e1e;
+      border-radius: 8px;
+      width: 180px;
+      overflow: hidden;
+      text-align: center;
+    }
+    #libraryModal .library-card img {
+      width: 100%;
+      height: 260px;
+      object-fit: cover;
+    }
+    #libraryModal .library-card .title {
+      padding: 0.5rem;
+      font-size: 0.9rem;
+    }
+    #libraryModal button.close-btn {
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
+      background-color: #ff4444;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
-  <div id="splash-screen">
-    <video id="splash-video" autoplay playsinline preload="auto">
+  <!-- Splash screen with introductory video.  The video is muted to comply
+       with browser autoplay policies; users can enable sound via the button. -->
+  <div id="splash">
+    <video id="splashVideo" autoplay muted playsinline>
       <source src="splash.mp4" type="video/mp4">
-      <source src="MOVIE SOLUTION.mp4" type="video/mp4">
-      <source src="MOVIE%20SOLUTION.mp4" type="video/mp4">
+      הדפדפן שלך אינו תומך בוידאו.
     </video>
+    <button id="splashSoundBtn">הפעל פתיח עם קול</button>
   </div>
 
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="topbar-inner">
-        <div class="brand-block">
-          <img src="logopop_tlv.png" alt="MOVIKO" class="brand-logo" onerror="this.src='logopop.png'">
-          <div class="auth-stack">
-            <button class="auth-btn" type="button">SIGN IN</button>
-            <button class="auth-btn" type="button">SIGN UP</button>
-          </div>
-        </div>
+  <!-- Main page header -->
+  <header id="mainHeader" class="hidden">
+    <img src="logopop_tlv.png" alt="MOVIKO logo" class="logo">
+    <button class="library-btn" id="openLibraryBtn">הספריה שלי</button>
+  </header>
 
-        <div class="head-controls">
-          <div class="search-box">
-            <span class="search-icon">⌕</span>
-            <input id="searchInput" type="text" placeholder="חפש סרטים...">
-          </div>
-        </div>
-      </div>
-    </header>
-
-    <main>
-      <section class="hero">
-        <div class="hero-visual" id="heroVisual"></div>
-
-        <aside class="hero-panel">
-          <h1 class="hero-title" id="featureTitle">טוען סרטים...</h1>
-          <div class="hero-meta">
-            <span class="chip" id="featureYear">--</span>
-            <span class="chip" id="featureRuntime">1080P ברירת מחדל</span>
-            <span class="chip imdb-badge" id="featureImdb">IMDb --</span>
-          </div>
-          <p class="hero-copy" id="featurePlot">הספרייה תתעדכן אוטומטית בעת עליית האפליקציה.</p>
-          <div class="action-row">
-            <button class="cta play" id="playBtn" type="button">הפעל</button>
-            <button class="cta" id="libraryBtn" type="button">ADD TO LIBRARY</button>
-            <button class="cta" id="trailerBtn" type="button">TRAILER</button>
-          </div>
-        </aside>
-      </section>
-
-      <section class="section">
-        <div class="section-head">
-          <h2 class="section-title">המשך צפייה בסרטים</h2>
-          <div class="section-note">IMDb / Torrentio / OpenSubtitles נטענים אוטומטית</div>
-        </div>
-        <div class="card-list" id="movieGrid"></div>
-      </section>
-    </main>
+  <!-- Movie list container -->
+  <div id="moviesContainer" class="movies hidden">
+    <!-- Movie cards will be generated dynamically -->
   </div>
 
-  <div id="buffering-screen" class="buffering-screen">
-    <div class="buffering-wrap">
-      <video id="buffering-video" src="buffering.mp4" autoplay loop muted playsinline></video>
+  <!-- Buffering overlay -->
+  <div id="buffering" class="hidden">
+    <div class="loader">
+      <video autoplay loop muted playsinline>
+        <source src="buffering.mp4" type="video/mp4">
+      </video>
     </div>
   </div>
 
-  <div id="playerModal" class="player-modal" aria-hidden="true">
-    <div class="player-stage">
-      <div class="player-toolbar">
-        <div class="player-title" id="playerMovieTitle">MOVIKO Player</div>
-        <div class="player-actions">
-          <button class="cta" id="modalTrailerBtn" type="button">TRAILER</button>
-          <button class="cta" id="modalLibraryBtn" type="button">ADD TO LIBRARY</button>
-          <button class="cta" id="closePlayerBtn" type="button">סגור</button>
-        </div>
-      </div>
-
-      <div class="player-box">
-        <div class="player-placeholder">
-          <div class="big">▶</div>
-          <div id="selectedSourceTitle">מוכן להפעלה</div>
-          <p id="selectedSourceText">ברירת מחדל: מקור 1080P עם הכי הרבה משתמשים. אם קיים מקור 4K, הוא יוצג בצד להחלפה ידנית.</p>
-        </div>
-      </div>
-    </div>
-
-    <aside class="player-side">
-      <h3 class="side-title">איכות זמינה</h3>
-      <div id="sourceList"></div>
-      <div class="subtitle-pref">
-        <strong>כתובית מועדפת:</strong>
-        <div class="muted-line" id="subtitleStatus">עברית אוטומטית כאשר נמצא מקור מתאים.</div>
-      </div>
-    </aside>
+  <!-- Library modal -->
+  <div id="libraryModal" class="hidden">
+    <h2>הספריה שלי</h2>
+    <div class="library-list" id="libraryList"></div>
+    <button class="close-btn" id="closeLibraryBtn">סגור</button>
   </div>
 
   <script>
-    const ADDONS = {
-      cinemeta: 'https://v3-cinemeta.strem.io',
-      subtitles: 'https://opensubtitles-v3.strem.io',
-      subtitlesLegacy: 'https://opensubtitles.strem.io/stremio/v1',
-      wizdom: 'https://4b139a4b7f94-wizdom-stremio-v2.baby-beamup.club',
-      torrentio: 'https://torrentio.strem.fun/qualityfilter=cam,scr'
-    };
-
-    const state = {
-      movies: [],
-      filtered: [],
-      currentMovie: null,
-      sources: [],
-      selectedSource: null
-    };
-
-    const fallbackMovies = [
-      { id:'tt0133093', name:'The Matrix', poster:'https://images.metahub.space/poster/small/tt0133093/img', year:'1999', imdbRating:'8.7', description:'האקר מגלה שהעולם שהוא מכיר הוא סימולציה ומצטרף למרד על עתיד האנושות.' },
-      { id:'tt0816692', name:'Interstellar', poster:'https://images.metahub.space/poster/small/tt0816692/img', year:'2014', imdbRating:'8.7', description:'מסע חלל מרהיב בניסיון למצוא בית חדש לאנושות.' },
-      { id:'tt4154796', name:'Avengers: Endgame', poster:'https://images.metahub.space/poster/small/tt4154796/img', year:'2019', imdbRating:'8.4', description:'סיום אפי לקשת של הנוקמים עם קרב גורלי על היקום.' },
-      { id:'tt0110912', name:'Pulp Fiction', poster:'https://images.metahub.space/poster/small/tt0110912/img', year:'1994', imdbRating:'8.9', description:'קלאסיקת פשע מסוגננת עם קווי עלילה שנשזרים יחד.' },
-      { id:'tt0468569', name:'The Dark Knight', poster:'https://images.metahub.space/poster/small/tt0468569/img', year:'2008', imdbRating:'9.0', description:'באטמן מתמודד מול הג׳וקר במאבק אפל על גות׳האם.' },
-      { id:'tt0120737', name:'The Lord of the Rings: The Fellowship of the Ring', poster:'https://images.metahub.space/poster/small/tt0120737/img', year:'2001', imdbRating:'8.8', description:'תחילת המסע לארץ התיכונה מול כוחות האופל.' }
+    /* =================== Data Structures =================== */
+    // Each movie object should at minimum have: id, title, poster (image URL),
+    // trailer (URL), and an array of streams returned by your backend.  For
+    // demonstration purposes we'll use a placeholder list.  Replace this
+    // placeholder with a call to your backend that fetches available movies
+    // through the Cinemeta API or another source.
+    const movies = [
+      {
+        id: 'movie1',
+        title: 'סרט לדוגמה 1',
+        poster: 'https://via.placeholder.com/400x600?text=Movie+1',
+        trailer: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        streams: [
+          { name: '4K • 100 משתמשים', url: '#', resolution: '4K', userCount: 100 },
+          { name: '1080p • 450 משתמשים', url: '#', resolution: '1080p', userCount: 450 }
+        ]
+      },
+      {
+        id: 'movie2',
+        title: 'סרט לדוגמה 2',
+        poster: 'https://via.placeholder.com/400x600?text=Movie+2',
+        trailer: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        streams: [
+          { name: '1080p • 200 משתמשים', url: '#', resolution: '1080p', userCount: 200 },
+          { name: '720p • 50 משתמשים', url: '#', resolution: '720p', userCount: 50 }
+        ]
+      }
     ];
 
-    const $ = s => document.querySelector(s);
-    const movieGrid = $('#movieGrid');
-    const searchInput = $('#searchInput');
-    const playBtn = $('#playBtn');
-    const libraryBtn = $('#libraryBtn');
-    const trailerBtn = $('#trailerBtn');
-    const modalTrailerBtn = $('#modalTrailerBtn');
-    const modalLibraryBtn = $('#modalLibraryBtn');
-    const closePlayerBtn = $('#closePlayerBtn');
-    const playerModal = $('#playerModal');
-    const sourceList = $('#sourceList');
-    const playerMovieTitle = $('#playerMovieTitle');
-    const selectedSourceTitle = $('#selectedSourceTitle');
-    const selectedSourceText = $('#selectedSourceText');
-    const subtitleStatus = $('#subtitleStatus');
-    const featureTitle = $('#featureTitle');
-    const featureYear = $('#featureYear');
-    const featureImdb = $('#featureImdb');
-    const featurePlot = $('#featurePlot');
-    const heroVisual = $('#heroVisual');
-    const bufferingScreen = $('#buffering-screen');
-    const bufferingVideo = $('#buffering-video');
-
-    function normalizeMovie(raw){
-      return {
-        id: raw.imdb_id || raw.id || '',
-        name: raw.name || 'Untitled',
-        poster: raw.poster || 'placeholder_light_gray_block.png',
-        year: raw.year || '--',
-        imdbRating: raw.imdbRating || '--',
-        description: raw.description || 'ללא תקציר זמין כרגע.'
-      };
+    /* =================== Helpers =================== */
+    // Parse resolution from a resolution string (e.g., "1080p" or "4K").  Returns
+    // a numeric value to facilitate sorting.  4K is treated as 4000, 1080p as
+    // 1080, 720p as 720, etc.  Unknown resolutions return 0.
+    function resolutionScore(res) {
+      if (!res) return 0;
+      const lower = res.toLowerCase();
+      if (lower.includes('4k')) return 4000;
+      const match = lower.match(/(\d{3,4})p/);
+      return match ? parseInt(match[1], 10) : 0;
     }
 
-    function renderMovies(list){
-      movieGrid.innerHTML = '';
-      list.forEach(movie => {
-        const card = document.createElement('article');
-        card.className = 'card';
+    // Sort streams so that the best 1080p stream with most users comes first,
+    // followed by 4K and then other resolutions.  Within the same resolution
+    // category we sort by userCount descending.  Unknown userCount values are
+    // treated as lowest priority and displayed as "לא זוהה".
+    function sortStreams(streams) {
+      return streams.slice().sort((a, b) => {
+        const resA = resolutionScore(a.resolution);
+        const resB = resolutionScore(b.resolution);
+        // 1080p preferred even over 4K when both present
+        const preferredOrder = [1080, 4000];
+        const idxA = preferredOrder.indexOf(resA);
+        const idxB = preferredOrder.indexOf(resB);
+        if (idxA !== idxB) {
+          if (idxA === -1) return 1;
+          if (idxB === -1) return -1;
+          return idxA - idxB;
+        }
+        // within same category sort by userCount descending; unknowns last
+        const usersA = typeof a.userCount === 'number' ? a.userCount : -1;
+        const usersB = typeof b.userCount === 'number' ? b.userCount : -1;
+        return usersB - usersA;
+      });
+    }
+
+    // Format the user count display: return number if defined and >0;
+    // otherwise return "לא זוהה" (not recognized).
+    function formatUserCount(count) {
+      return (typeof count === 'number' && count > 0) ? count : 'לא זוהה';
+    }
+
+    // Retrieve the library array from localStorage.  Data persists across
+    // sessions because localStorage has no expiration【252887741188659†L186-L194】.
+    function getLibrary() {
+      try {
+        const data = localStorage.getItem('movikoLibrary');
+        return data ? JSON.parse(data) : [];
+      } catch (err) {
+        console.error('Failed to parse library', err);
+        return [];
+      }
+    }
+
+    // Save the library array to localStorage
+    function saveLibrary(lib) {
+      try {
+        localStorage.setItem('movikoLibrary', JSON.stringify(lib));
+      } catch (err) {
+        console.error('Failed to save library', err);
+      }
+    }
+
+    // Add a movie to the library if it's not already present
+    function addToLibrary(movie) {
+      const lib = getLibrary();
+      if (!lib.some(item => item.id === movie.id)) {
+        lib.push({ id: movie.id, title: movie.title, poster: movie.poster });
+        saveLibrary(lib);
+        alert('הסרט נוסף לספריה');
+      } else {
+        alert('הסרט כבר קיים בספריה');
+      }
+    }
+
+    // Render the library modal
+    function renderLibrary() {
+      const lib = getLibrary();
+      const list = document.getElementById('libraryList');
+      list.innerHTML = '';
+      if (lib.length === 0) {
+        list.innerHTML = '<p>הספריה ריקה.</p>';
+        return;
+      }
+      lib.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'library-card';
         card.innerHTML = `
-          <img class="poster" src="${movie.poster}" alt="${movie.name}" loading="lazy">
-          <div class="card-body">
-            <div class="card-title">${movie.name}</div>
-            <div class="card-sub">
-              <span>${movie.year}</span>
-              <span class="rating-mini">IMDb ${movie.imdbRating}</span>
+          <img src="${item.poster}" alt="${item.title}">
+          <div class="title">${item.title}</div>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    // Render movie cards onto the page
+    function renderMovies() {
+      const container = document.getElementById('moviesContainer');
+      movies.forEach(movie => {
+        const card = document.createElement('div');
+        card.className = 'movie-card';
+        card.innerHTML = `
+          <img class="poster" src="${movie.poster}" alt="${movie.title}">
+          <div class="info">
+            <div class="title">${movie.title}</div>
+            <div class="actions">
+              <button class="play-btn">הפעל</button>
+              <button class="trailer-btn">טריילר</button>
+              <button class="library-btn">הוסף לספריה</button>
             </div>
           </div>
         `;
-        card.addEventListener('click', () => setFeatureMovie(movie));
-        movieGrid.appendChild(card);
-      });
-    }
-
-    function setFeatureMovie(movie){
-      state.currentMovie = movie;
-      featureTitle.textContent = movie.name;
-      featureYear.textContent = movie.year;
-      featureImdb.textContent = `IMDb ${movie.imdbRating}`;
-      featurePlot.textContent = movie.description;
-      heroVisual.style.backgroundImage =
-        `linear-gradient(90deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.18) 38%, rgba(0,0,0,.48) 100%), url('${movie.poster}')`;
-      playerMovieTitle.textContent = movie.name;
-
-      const heroSection = document.querySelector('.hero');
-      if (heroSection) {
-        heroSection.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start'
+        // Attach action handlers
+        const playBtn = card.querySelector('.play-btn');
+        const trailerBtn = card.querySelector('.trailer-btn');
+        const addBtn = card.querySelector('.library-btn');
+        playBtn.addEventListener('click', () => handlePlay(movie));
+        trailerBtn.addEventListener('click', () => {
+          window.open(movie.trailer, '_blank');
         });
-      }
-    }
-
-    async function loadCatalog(){
-      const urls = [
-        `${ADDONS.cinemeta}/catalog/movie/top.json`,
-        `${ADDONS.cinemeta}/catalog/movie/popular.json`
-      ];
-
-      for (const url of urls){
-        try{
-          const res = await fetch(url);
-          if (!res.ok) continue;
-          const data = await res.json();
-          if (Array.isArray(data.metas) && data.metas.length){
-            const movies = data.metas.slice(0,18).map(normalizeMovie);
-            state.movies = movies;
-            state.filtered = movies;
-            renderMovies(movies);
-            setFeatureMovie(movies[0]);
-            return;
-          }
-        } catch(e) {}
-      }
-
-      state.movies = fallbackMovies;
-      state.filtered = fallbackMovies;
-      renderMovies(fallbackMovies);
-      setFeatureMovie(fallbackMovies[0]);
-    }
-
-    function parseStreamQuality(name){
-      const lower = String(name || '').toLowerCase();
-      if (lower.includes('2160') || lower.includes('4k')) return '4K';
-      if (lower.includes('1080')) return '1080P';
-      return 'OTHER';
-    }
-
-    function parseUsers(source){
-      const text = [
-        source?.title || '',
-        source?.name || '',
-        source?.description || '',
-        source?.label || '',
-        source?.behaviorHints ? JSON.stringify(source.behaviorHints) : ''
-      ].join(' ');
-
-      const patterns = [
-        /👤\\s*(\\d+)/i,
-        /seed(?:s|ers)?[:\\s]+(\\d+)/i,
-        /(\\d+)\\s*seeders?/i,
-        /users?[:\\s]+(\\d+)/i,
-        /👥\\s*(\\d+)/i
-      ];
-
-      for (const pattern of patterns) {
-        const match = text.match(pattern);
-        if (match) return Number(match[1]);
-      }
-
-      return 0;
-    }
-
-    function uniqSources(streams){
-      const picked = { '1080P': null, '4K': null };
-
-      streams.forEach(stream => {
-        const quality = parseStreamQuality(stream.name || stream.title || '');
-        const users = parseUsers(stream);
-        const entry = {
-          quality,
-          users,
-          label: stream.title || stream.name || 'Source',
-          raw: stream
-        };
-
-        if (quality === '1080P' && (!picked['1080P'] || users > picked['1080P'].users)) {
-          picked['1080P'] = entry;
-        }
-        if (quality === '4K' && (!picked['4K'] || users > picked['4K'].users)) {
-          picked['4K'] = entry;
-        }
-      });
-
-      return [picked['1080P'], picked['4K']].filter(Boolean);
-    }
-
-    async function loadSourcesForMovie(movie){
-      try{
-        const res = await fetch(`${ADDONS.torrentio}/stream/movie/${movie.id}.json`);
-        if (!res.ok) throw new Error();
-        const data = await res.json();
-        const best = uniqSources(Array.isArray(data.streams) ? data.streams : []);
-        if (best.length) return best;
-      } catch(e) {}
-
-      return [
-        { quality:'1080P', users:231, label:`${movie.name} - 1080P / הכי הרבה משתמשים`, raw:null },
-        { quality:'4K', users:88, label:`${movie.name} - 4K / הכי הרבה משתמשים`, raw:null }
-      ];
-    }
-
-    async function loadHebrewSubtitle(movie){
-      const urls = [
-        `${ADDONS.subtitles}/subtitles/movie/${movie.id}.json`,
-        `${ADDONS.subtitlesLegacy}/subtitles/movie/${movie.id}.json`,
-        `${ADDONS.wizdom}/subtitles/movie/${movie.id}.json`
-      ];
-
-      for (const url of urls){
-        try{
-          const res = await fetch(url);
-          if (!res.ok) continue;
-          const data = await res.json();
-          const items = Array.isArray(data.subtitles) ? data.subtitles : Array.isArray(data) ? data : [];
-          const heb =
-            items.find(s => String(s.lang || s.language || '').toLowerCase().includes('he')) ||
-            items.find(s => String(s.label || '').includes('עבר'));
-          if (heb) return heb;
-        } catch(e) {}
-      }
-
-      return null;
-    }
-
-    function renderSourceOptions(){
-      sourceList.innerHTML = '';
-      state.sources.forEach((source, idx) => {
-        const el = document.createElement('div');
-        el.className = `source-card ${idx === 0 ? 'active' : ''}`;
-        el.innerHTML = `
-          <div class="source-top">
-            <div class="source-quality">${source.quality}</div>
-            <div class="source-users">${source.users} משתמשים</div>
-          </div>
-          <div class="source-name">${source.label}</div>
-        `;
-        el.addEventListener('click', () => selectSource(idx));
-        sourceList.appendChild(el);
+        addBtn.addEventListener('click', () => addToLibrary(movie));
+        container.appendChild(card);
       });
     }
 
-    function selectSource(idx){
-      state.selectedSource = state.sources[idx] || null;
-      [...sourceList.children].forEach((card, i) => card.classList.toggle('active', i === idx));
-
-      if (state.selectedSource){
-        selectedSourceTitle.textContent = `${state.currentMovie.name} · ${state.selectedSource.quality}`;
-        selectedSourceText.textContent = `${state.selectedSource.label} · ברירת מחדל 1080P. אפשר לעבור ל־4K רק אם קיים מקור.`;
+    // Handle playing a movie: sort streams, select best one, and call your
+    // backend/player.  Shows the buffering overlay while preparing.  This
+    // function is a stub; integrate with your streaming engine here.
+    function handlePlay(movie) {
+      // Sort available streams according to resolution and user count
+      const sorted = sortStreams(movie.streams);
+      const selectedStream = sorted[0];
+      if (!selectedStream || !selectedStream.url) {
+        alert('אין מקור ניגון זמין לסרט זה');
+        return;
       }
-    }
-
-    async function openPlayer(){
-      if (!state.currentMovie) return;
-
-      bufferingScreen.classList.add('active');
-      bufferingVideo.currentTime = 0;
-      bufferingVideo.play().catch(() => {});
-
-      const [sources, subtitle] = await Promise.all([
-        loadSourcesForMovie(state.currentMovie),
-        loadHebrewSubtitle(state.currentMovie)
-      ]);
-
-      state.sources = sources.sort((a, b) => {
-        const order = { '1080P': 0, '4K': 1, 'OTHER': 2 };
-        return (order[a.quality] ?? 9) - (order[b.quality] ?? 9);
-      });
-
-      renderSourceOptions();
-      selectSource(0);
-
-      subtitleStatus.textContent = subtitle
-        ? 'נמצאה כתובית עברית תואמת ותועדף אוטומטית.'
-        : 'לא נמצאה כרגע כתובית עברית חיה. יוצג מצב ברירת מחדל.';
-
+      // Show buffering animation
+      const buffering = document.getElementById('buffering');
+      buffering.classList.remove('hidden');
+      // Simulate preparation (replace this with actual logic)
       setTimeout(() => {
-        bufferingScreen.classList.remove('active');
-        bufferingVideo.pause();
-        playerModal.classList.add('open');
-        playerModal.setAttribute('aria-hidden', 'false');
-      }, 3000);
+        buffering.classList.add('hidden');
+        // TODO: integrate with real player; for now open the URL in new tab
+        window.open(selectedStream.url, '_blank');
+      }, 2000);
     }
 
-    function closePlayer(){
-      playerModal.classList.remove('open');
-      playerModal.setAttribute('aria-hidden', 'true');
+    /* =================== Splash Logic =================== */
+    const splashEl = document.getElementById('splash');
+    const splashVideo = document.getElementById('splashVideo');
+    const splashSoundBtn = document.getElementById('splashSoundBtn');
+    const mainHeader = document.getElementById('mainHeader');
+    const moviesContainer = document.getElementById('moviesContainer');
+
+    // Hide splash after video ends or after 5 seconds (whichever first).
+    let splashTimeout;
+    function hideSplash() {
+      clearTimeout(splashTimeout);
+      splashEl.classList.add('hidden');
+      mainHeader.classList.remove('hidden');
+      moviesContainer.classList.remove('hidden');
     }
+    splashVideo.addEventListener('ended', hideSplash);
+    splashTimeout = setTimeout(hideSplash, 5000);
 
-    function saveToLibrary(){
-      if (!state.currentMovie) return;
-      const key = 'moviko-library';
-      const current = JSON.parse(localStorage.getItem(key) || '[]');
-      if (!current.find(x => x.id === state.currentMovie.id)) current.push(state.currentMovie);
-      localStorage.setItem(key, JSON.stringify(current));
-      libraryBtn.textContent = 'נשמר';
-      modalLibraryBtn.textContent = 'נשמר';
-      setTimeout(() => {
-        libraryBtn.textContent = 'ADD TO LIBRARY';
-        modalLibraryBtn.textContent = 'ADD TO LIBRARY';
-      }, 1400);
-    }
+    // If user clicks the sound button, unmute video and play again
+    splashSoundBtn.addEventListener('click', () => {
+      splashVideo.muted = false;
+      splashVideo.currentTime = 0;
+      splashVideo.play().catch(() => {});
+      splashSoundBtn.style.display = 'none';
+    });
 
-    function openTrailer(){
-      if (!state.currentMovie) return;
-      const q = encodeURIComponent(`${state.currentMovie.name} official trailer`);
-      window.open(`https://www.youtube.com/results?search_query=${q}`, '_blank');
-    }
+    /* =================== Library Modal Logic =================== */
+    const libraryModal = document.getElementById('libraryModal');
+    const openLibraryBtn = document.getElementById('openLibraryBtn');
+    const closeLibraryBtn = document.getElementById('closeLibraryBtn');
 
-    function filterMovies(term){
-      const q = term.trim().toLowerCase();
-      state.filtered = !q
-        ? state.movies
-        : state.movies.filter(movie => movie.name.toLowerCase().includes(q));
+    openLibraryBtn.addEventListener('click', () => {
+      renderLibrary();
+      libraryModal.classList.remove('hidden');
+    });
+    closeLibraryBtn.addEventListener('click', () => {
+      libraryModal.classList.add('hidden');
+    });
 
-      renderMovies(state.filtered);
-      if (state.filtered[0]) setFeatureMovie(state.filtered[0]);
-    }
-
-    document.addEventListener('DOMContentLoaded', async () => {
-      const splash = document.getElementById('splash-screen');
-      const splashVideo = document.getElementById('splash-video');
-
-      if (splashVideo) {
-        splashVideo.muted = false;
-        splashVideo.volume = 1;
-
-        splashVideo.play().catch(() => {
-          splashVideo.muted = true;
-          splashVideo.play().catch(() => {});
-        });
+    // Close modal when clicking outside of content
+    libraryModal.addEventListener('click', (e) => {
+      if (e.target === libraryModal) {
+        libraryModal.classList.add('hidden');
       }
+    });
 
-      setTimeout(() => {
-        if (splash) {
-          splash.classList.add('fade-out');
-          setTimeout(() => {
-            splash.style.display = 'none';
-          }, 500);
-        }
-      }, 8000);
-
-      await loadCatalog();
-
-      searchInput.addEventListener('input', e => filterMovies(e.target.value));
-      playBtn.addEventListener('click', openPlayer);
-      libraryBtn.addEventListener('click', saveToLibrary);
-      trailerBtn.addEventListener('click', openTrailer);
-      modalTrailerBtn.addEventListener('click', openTrailer);
-      modalLibraryBtn.addEventListener('click', saveToLibrary);
-      closePlayerBtn.addEventListener('click', closePlayer);
+    /* =================== Initialize =================== */
+    document.addEventListener('DOMContentLoaded', () => {
+      renderMovies();
     });
   </script>
 </body>

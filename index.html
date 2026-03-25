@@ -7,8 +7,6 @@
   <style>
     :root{
       --bg:#05080d;
-      --panel:#0b1320;
-      --panel2:#0d1726;
       --text:#f4f7fb;
       --muted:#9fb0c8;
       --gold:#f2c318;
@@ -28,26 +26,39 @@
     button,input{font:inherit}
     a{text-decoration:none;color:inherit}
 
-    /* Splash */
     #splash-screen{
-      position:fixed; inset:0; background:#000;
-      display:grid; place-items:center; z-index:3000;
-      opacity:1; transition:opacity .45s ease;
+      position:fixed;
+      inset:0;
+      background:#000;
+      display:grid;
+      place-items:center;
+      z-index:3000;
+      opacity:1;
+      transition:opacity .45s ease;
     }
-    #splash-screen.fade-out{opacity:0; pointer-events:none}
+    #splash-screen.fade-out{
+      opacity:0;
+      pointer-events:none;
+    }
     #splash-video{
       width:min(82vw,760px);
       max-height:82vh;
       object-fit:contain;
       background:#000;
     }
-    #splash-video::-webkit-media-controls{display:none !important}
+    #splash-video::-webkit-media-controls{
+      display:none !important;
+    }
 
-    .app-shell{max-width:1500px; margin:0 auto}
+    .app-shell{
+      max-width:1500px;
+      margin:0 auto;
+    }
 
-    /* Top bar */
     .topbar{
-      position:sticky; top:0; z-index:900;
+      position:sticky;
+      top:0;
+      z-index:900;
       background:linear-gradient(90deg,rgba(7,12,19,.96),rgba(11,26,43,.96),rgba(7,12,19,.96));
       border-bottom:1px solid var(--line);
       backdrop-filter:blur(8px);
@@ -122,7 +133,6 @@
       font-size:22px;
     }
 
-    /* Hero */
     .hero{
       display:grid;
       grid-template-columns:1fr 420px;
@@ -200,8 +210,9 @@
       color:#fff;
     }
 
-    /* Sections */
-    .section{padding:22px 28px}
+    .section{
+      padding:22px 28px;
+    }
     .section-head{
       display:flex;
       align-items:center;
@@ -242,7 +253,9 @@
       display:block;
       background:#0a0d12;
     }
-    .card-body{padding:11px 12px 14px}
+    .card-body{
+      padding:11px 12px 14px;
+    }
     .card-title{
       font-size:14px;
       font-weight:700;
@@ -260,7 +273,6 @@
       font-weight:700;
     }
 
-    /* Buffering */
     .buffering-screen{
       position:fixed;
       inset:0;
@@ -284,7 +296,6 @@
       background:transparent;
       display:grid;
       place-items:center;
-      box-shadow:0 0 0 0 transparent;
     }
     #buffering-video{
       width:170%;
@@ -296,7 +307,6 @@
       background:transparent;
     }
 
-    /* Player modal */
     .player-modal{
       position:fixed;
       inset:0;
@@ -305,7 +315,9 @@
       display:none;
       grid-template-columns:1fr 360px;
     }
-    .player-modal.open{display:grid}
+    .player-modal.open{
+      display:grid;
+    }
     .player-stage{
       padding:28px;
       display:flex;
@@ -414,14 +426,19 @@
         border-right:0;
         border-top:1px solid rgba(255,255,255,.08);
       }
-      .brand-logo{max-width:320px;width:100%}
-      .head-controls{grid-template-columns:1fr}
+      .brand-logo{
+        max-width:320px;
+        width:100%;
+      }
+      .head-controls{
+        grid-template-columns:1fr;
+      }
     }
   </style>
 </head>
 <body>
   <div id="splash-screen">
-    <video id="splash-video" autoplay muted playsinline preload="auto">
+    <video id="splash-video" autoplay playsinline preload="auto">
       <source src="splash.mp4" type="video/mp4">
       <source src="MOVIE SOLUTION.mp4" type="video/mp4">
       <source src="MOVIE%20SOLUTION.mp4" type="video/mp4">
@@ -600,8 +617,17 @@
       featureYear.textContent = movie.year;
       featureImdb.textContent = `IMDb ${movie.imdbRating}`;
       featurePlot.textContent = movie.description;
-      heroVisual.style.backgroundImage = `linear-gradient(90deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.18) 38%, rgba(0,0,0,.48) 100%), url('${movie.poster}')`;
+      heroVisual.style.backgroundImage =
+        `linear-gradient(90deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.18) 38%, rgba(0,0,0,.48) 100%), url('${movie.poster}')`;
       playerMovieTitle.textContent = movie.name;
+
+      const heroSection = document.querySelector('.hero');
+      if (heroSection) {
+        heroSection.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
+        });
+      }
     }
 
     async function loadCatalog(){
@@ -623,7 +649,7 @@
             setFeatureMovie(movies[0]);
             return;
           }
-        }catch(e){}
+        } catch(e) {}
       }
 
       state.movies = fallbackMovies;
@@ -639,11 +665,29 @@
       return 'OTHER';
     }
 
-    function parseUsers(name){
-      const m =
-        String(name || '').match(/👤\s*(\d+)/) ||
-        String(name || '').match(/seed(?:s|ers)?[:\s]+(\d+)/i);
-      return m ? Number(m[1]) : 0;
+    function parseUsers(source){
+      const text = [
+        source?.title || '',
+        source?.name || '',
+        source?.description || '',
+        source?.label || '',
+        source?.behaviorHints ? JSON.stringify(source.behaviorHints) : ''
+      ].join(' ');
+
+      const patterns = [
+        /👤\\s*(\\d+)/i,
+        /seed(?:s|ers)?[:\\s]+(\\d+)/i,
+        /(\\d+)\\s*seeders?/i,
+        /users?[:\\s]+(\\d+)/i,
+        /👥\\s*(\\d+)/i
+      ];
+
+      for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match) return Number(match[1]);
+      }
+
+      return 0;
     }
 
     function uniqSources(streams){
@@ -651,7 +695,7 @@
 
       streams.forEach(stream => {
         const quality = parseStreamQuality(stream.name || stream.title || '');
-        const users = parseUsers(stream.name || stream.title || '');
+        const users = parseUsers(stream);
         const entry = {
           quality,
           users,
@@ -677,7 +721,7 @@
         const data = await res.json();
         const best = uniqSources(Array.isArray(data.streams) ? data.streams : []);
         if (best.length) return best;
-      }catch(e){}
+      } catch(e) {}
 
       return [
         { quality:'1080P', users:231, label:`${movie.name} - 1080P / הכי הרבה משתמשים`, raw:null },
@@ -702,7 +746,7 @@
             items.find(s => String(s.lang || s.language || '').toLowerCase().includes('he')) ||
             items.find(s => String(s.label || '').includes('עבר'));
           if (heb) return heb;
-        }catch(e){}
+        } catch(e) {}
       }
 
       return null;
@@ -807,8 +851,13 @@
       const splashVideo = document.getElementById('splash-video');
 
       if (splashVideo) {
-        splashVideo.muted = true;
-        splashVideo.play().catch(() => {});
+        splashVideo.muted = false;
+        splashVideo.volume = 1;
+
+        splashVideo.play().catch(() => {
+          splashVideo.muted = true;
+          splashVideo.play().catch(() => {});
+        });
       }
 
       setTimeout(() => {

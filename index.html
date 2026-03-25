@@ -843,6 +843,13 @@ renderMovies(state.filtered);
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
+      const splashVideo = document.getElementById('splash-video');
+
+// ניסיון כפוי להפעיל וידאו
+if (splashVideo) {
+  splashVideo.muted = true;
+  splashVideo.play().catch(() => {});
+}
       const splash = $('#splash-screen');
       const splashVideo = $('#splash-video');
       const splashOverlay = $('#splash-overlay');

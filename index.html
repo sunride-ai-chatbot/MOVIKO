@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOVIKO</title>
+  <style>
+    :root{
+      --bg:#05080d;
+      --text:#f4f7fb;
+      --muted:#9fb0c8;
+      --gold:#f2c318;
+      --line:rgba(255,255,255,.08);
+      --green:#1ecb62;
+      --chip:rgba(255,255,255,.08);
+      --shadow:0 12px 36px rgba(0,0,0,.35);
+    }
+    *{box-sizing:border-box}
+    html,body{
+      margin:0;
+      background:radial-gradient(circle at top,#0b1c31 0%,var(--bg) 48%,#030507 100%);
+      color:var(--text);
+      font-family:Arial,sans-serif;
+    }
+    body{min-height:100vh}
+    button,input{font:inherit}
+    a{text-decoration:none;color:inherit}
+
+    #splash-screen{
+      position:fixed; inset:0; background:#000;
+      display:grid; place-items:center; z-index:3000;
+      transition:opacity .45s ease;
+    }
+    #splash-screen.fade-out{opacity:0; pointer-events:none}
+    #splash-video{
+      width:min(82vw,700px);
+      max-height:82vh;
+      object-fit:contain;
+    }
+    #splash-overlay{
+      position:absolute; inset:0;
+      display:grid; place-items:center;
+      color:#fff; font-size:62px;
+      background:rgba(0,0,0,.15);
+      cursor:pointer;
+    }
+
+    .app-shell{max-width:1500px; margin:0 auto}
+
+    .topbar{
+      position:sticky; top:0; z-index:900;
+      background:linear-gradient(90deg,rgba(7,12,19,.96),rgba(11,26,43,.96),rgba(7,12,19,.96));
+      border-bottom:1px solid var(--line);
+      backdrop-filter:blur(8px);
+    }
+    .topbar-inner{
+      display:grid;
+      grid-template-columns:auto 1fr;
+      gap:28px;
+      align-items:start;
+      padding:12px 28px 14px;
+    }
+
+    .brand-block{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      width:max-content;
+    }
+
+    .brand-logo{
+      width:300px;
+      max-width:24vw;
+      height:auto;
+      display:block;
+    }
+
+    .auth-stack{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      width:150px;
+    }
+
+    .auth-btn{
+      height:36px;
+      border-radius:999px;
+      border:2px solid rgba(255,255,255,.12);
+      background:rgba(255,255,255,.02);
+      color:#fff;
+      cursor:pointer;
+      transition:.2s ease;
+      font-weight:700;
+    }
+    .auth-btn:hover{
+      border-color:rgba(255,255,255,.28);
+      background:rgba(255,255,255,.06);
+    }
+
+    .head-controls{
+      display:grid;
+      grid-template-columns:minmax(320px,620px);
+      justify-content:start;
+      padding-top:10px;
+    }
+
+    .search-box{position:relative}
+    .search-box input{
+      width:100%;
+      height:58px;
+      border-radius:999px;
+      border:2px solid rgba(242,195,24,.6);
+      background:rgba(255,255,255,.03);
+      color:var(--text);
+      padding:0 58px 0 24px;
+      outline:none;
+      box-shadow:inset 0 0 0 1px rgba(242,195,24,.18);
+    }
+    .search-box input::placeholder{color:#9db0c9}
+    .search-icon{
+      position:absolute;
+      right:20px;
+      top:50%;
+      transform:translateY(-50%);
+      color:var(--gold);
+      font-size:22px;
+    }
+
+    .hero{
+      display:grid;
+      grid-template-columns:1fr 420px;
+      gap:24px;
+      min-height:440px;
+      padding:18px 28px 0;
+    }
+
+    .hero-visual{
+      min-height:420px;
+      border-radius:0 0 20px 20px;
+      background:
+        linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.18) 38%,rgba(0,0,0,.48) 100%),
+        radial-gradient(circle at 70% 18%,rgba(64,97,139,.22),transparent 18%),
+        radial-gradient(circle at 50% 35%,rgba(255,255,255,.045),transparent 24%),
+        url('placeholder_light_gray_block.png') center/cover no-repeat;
+      box-shadow:var(--shadow), inset 0 0 160px rgba(0,0,0,.5);
+    }
+
+    .hero-panel{
+      align-self:end;
+      margin-bottom:22px;
+      background:linear-gradient(180deg,rgba(18,25,37,.92),rgba(10,15,23,.95));
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:24px;
+      padding:22px 22px 16px;
+      box-shadow:var(--shadow);
+    }
+
+    .hero-title{
+      margin:0 0 10px;
+      font-size:34px;
+      line-height:1.08;
+}
+
+    .hero-meta{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      color:var(--muted);
+      font-size:14px;
+      margin-bottom:16px;
+    }
+
+    .chip{
+      padding:8px 12px;
+      border-radius:999px;
+      background:var(--chip);
+      border:1px solid rgba(255,255,255,.08);
+    }
+
+    .imdb-badge{
+      background:#f3c016;
+      color:#111;
+      font-weight:800;
+    }
+
+    .hero-copy{
+      color:#d3dded;
+      font-size:14px;
+      line-height:1.6;
+      margin:0 0 18px;
+    }
+
+    .action-row{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .cta{
+      height:42px;
+      padding:0 18px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(255,255,255,.03);
+      color:#fff;
+      cursor:pointer;
+      font-weight:700;
+    }
+
+    .cta.play{
+      background:var(--green);
+      border-color:transparent;
+      color:#fff;
+    }
+
+    .section{padding:22px 28px}
+    .section-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:14px;
+    }
+    .section-title{
+      font-size:22px;
+      color:#cfe0f9;
+      margin:0;
+    }
+    .section-note{
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    .card-list{
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(155px,1fr));
+      gap:16px;
+    }
+
+    .card{
+      background:linear-gradient(180deg,rgba(18,24,34,.96),rgba(10,13,19,.98));
+      border:1px solid rgba(255,255,255,.07);
+      border-radius:18px;
+      overflow:hidden;
+      cursor:pointer;
+      transition:transform .18s ease,border-color .18s ease;
+    }
+    .card:hover{
+      transform:translateY(-4px);
+      border-color:rgba(242,195,24,.45);
+    }
+
+    .poster{
+      width:100%;
+      aspect-ratio:2/3;
+      object-fit:cover;
+      display:block;
+      background:#0a0d12;
+    }
+
+    .card-body{padding:11px 12px 14px}
+    .card-title{
+      font-size:14px;
+      font-weight:700;
+      min-height:38px;
+    }
+
+    .card-sub{
+      display:flex;
+      justify-content:space-between;
+      margin-top:8px;
+      font-size:12px;
+      color:var(--muted);
+    }
+
+    .rating-mini{
+      color:#f4ca33;
+      font-weight:700;
+    }
+
+    .buffering-screen{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.82);
+      display:grid;
+      place-items:center;
+      z-index:2500;
+      visibility:hidden;
+      opacity:0;
+      transition:opacity .25s ease;
+    }
+
+    .buffering-screen.active{
+      visibility:visible;
+      opacity:1;
+    }
+
+    .buffering-wrap{
+      width:380px;
+      height:380px;
+      border-radius:50%;
+      overflow:hidden;
+      background:transparent;
+      display:grid;
+      place-items:center;
+    }
+
+    #buffering-video{
+      width:140%;
+      height:140%;
+      object-fit:cover;
+      border-radius:50%;
+      transform:scale(1.55);
+      filter:contrast(1.03) saturate(1.04);
+      clip-path:circle(41% at 50% 50%);
+    }
+
+    .player-modal{
+      position:fixed;
+      inset:0;
+      background:rgba(2,4,8,.94);
+      z-index:2600;
+      display:none;
+      grid-template-columns:1fr 360px;
+    }
+
+    .player-modal.open{display:grid}
+
+    .player-stage{
+      padding:28px;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+
+    .player-toolbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+    }
+
+    .player-title{
+      font-size:28px;
+      font-weight:800;
+    }
+
+    .player-actions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .player-box{
+      flex:1;
+      border-radius:22px;
+      background:linear-gradient(180deg,#0d1118,#05070a);
+      border:1px solid rgba(255,255,255,.08);
+      display:grid;
+      place-items:center;
+      position:relative;
+      overflow:hidden;
+    }
+
+    .player-placeholder{
+      text-align:center;
+      color:#d4e2f5;
+      max-width:720px;
+      padding:20px;
+    }
+
+    .player-placeholder .big{
+      font-size:46px;
+      margin-bottom:14px;
+    }
+
+    .player-placeholder p{
+color:var(--muted);
+      line-height:1.7;
+    }
+
+    .player-side{
+      border-right:1px solid rgba(255,255,255,.08);
+      background:linear-gradient(180deg,rgba(17,23,33,.98),rgba(7,10,14,.98));
+      padding:28px 22px;
+      overflow:auto;
+    }
+
+    .side-title{
+      font-size:18px;
+      margin:0 0 14px;
+    }
+
+    .source-card{
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:18px;
+      padding:14px;
+      margin-bottom:12px;
+      cursor:pointer;
+    }
+
+    .source-card.active{
+      border-color:rgba(242,195,24,.55);
+      box-shadow:inset 0 0 0 1px rgba(242,195,24,.2);
+    }
+
+    .source-top{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      margin-bottom:8px;
+    }
+
+    .source-quality{
+      font-size:15px;
+      font-weight:800;
+    }
+
+    .source-users{
+      color:#98c7ff;
+      font-size:12px;
+    }
+
+    .source-name{
+      font-size:13px;
+      color:#dce6f4;
+      line-height:1.45;
+    }
+
+    .subtitle-pref{
+      margin-top:18px;
+      padding:14px;
+      border-radius:16px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.08);
+      color:#d7e1ef;
+    }
+
+    .muted-line{
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    @media(max-width:1050px){
+      .topbar-inner{grid-template-columns:1fr}
+      .hero{grid-template-columns:1fr}
+      .player-modal.open{grid-template-columns:1fr}
+      .player-side{
+        border-right:0;
+        border-top:1px solid rgba(255,255,255,.08);
+      }
+      .brand-logo{
+        max-width:320px;
+        width:100%;
+      }
+      .head-controls{
+        grid-template-columns:1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="splash-screen">
+    <video id="splash-video" autoplay muted playsinline preload="auto">
+      <source src="splash.mp4" type="video/mp4">
+      <source src="MOVIE SOLUTION.mp4" type="video/mp4">
+    </video>
+    <div id="splash-overlay">▶</div>
+  </div>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand-block">
+          <img src="logopop_tlv.png" alt="MOVIKO" class="brand-logo" onerror="this.src='logopop.png'">
+          <div class="auth-stack">
+            <button class="auth-btn" type="button">SIGN IN</button>
+            <button class="auth-btn" type="button">SIGN UP</button>
+          </div>
+        </div>
+
+        <div class="head-controls">
+          <div class="search-box">
+            <span class="search-icon">⌕</span>
+            <input id="searchInput" type="text" placeholder="חפש סרטים...">
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-visual" id="heroVisual"></div>
+
+        <aside class="hero-panel">
+          <h1 class="hero-title" id="featureTitle">טוען סרטים...</h1>
+          <div class="hero-meta">
+            <span class="chip" id="featureYear">--</span>
+            <span class="chip" id="featureRuntime">1080P ברירת מחדל</span>
+            <span class="chip imdb-badge" id="featureImdb">IMDb --</span>
+          </div>
+          <p class="hero-copy" id="featurePlot">הספרייה תתעדכן אוטומטית בעת עליית האפליקציה.</p>
+          <div class="action-row">
+            <button class="cta play" id="playBtn" type="button">הפעל</button>
+            <button class="cta" id="libraryBtn" type="button">ADD TO LIBRARY</button>
+            <button class="cta" id="trailerBtn" type="button">TRAILER</button>
+          </div>
+        </aside>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2 class="section-title">המשך צפייה בסרטים</h2>
+          <div class="section-note">Cinemeta / OpenSubtitles / Torrentio נטענים אוטומטית בעת הפתיחה</div>
+        </div>
+        <div class="card-list" id="movieGrid"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="buffering-screen" class="buffering-screen">
+    <div class="buffering-wrap">
+      <video id="buffering-video" src="buffering.
+mp4" autoplay loop muted playsinline></video>
+    </div>
+  </div>
+
+  <div id="playerModal" class="player-modal" aria-hidden="true">
+    <div class="player-stage">
+      <div class="player-toolbar">
+        <div class="player-title" id="playerMovieTitle">MOVIKO Player</div>
+        <div class="player-actions">
+          <button class="cta" id="modalTrailerBtn" type="button">TRAILER</button>
+          <button class="cta" id="modalLibraryBtn" type="button">ADD TO LIBRARY</button>
+          <button class="cta" id="closePlayerBtn" type="button">סגור</button>
+        </div>
+      </div>
+      <div class="player-box">
+        <div class="player-placeholder">
+          <div class="big">▶</div>
+          <div id="selectedSourceTitle">מוכן להפעלה</div>
+          <p id="selectedSourceText">ברירת מחדל: מקור 1080P עם הכי הרבה משתמשים. אם קיים מקור 4K, הוא יוצג בצד להחלפה ידנית.</p>
+        </div>
+      </div>
+    </div>
+
+    <aside class="player-side">
+      <h3 class="side-title">איכות זמינה</h3>
+      <div id="sourceList"></div>
+      <div class="subtitle-pref">
+        <strong>כתובית מועדפת:</strong>
+        <div class="muted-line" id="subtitleStatus">עברית אוטומטית כאשר נמצא מקור מתאים.</div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const ADDONS = {
+      cinemeta: 'https://v3-cinemeta.strem.io',
+      subtitles: 'https://opensubtitles-v3.strem.io',
+      subtitlesLegacy: 'https://opensubtitles.strem.io/stremio/v1',
+      wizdom: 'https://4b139a4b7f94-wizdom-stremio-v2.baby-beamup.club',
+      torrentio: 'https://torrentio.strem.fun/qualityfilter=cam,scr'
+    };
+
+    const state = {
+      movies: [],
+      filtered: [],
+      currentMovie: null,
+      sources: [],
+      selectedSource: null
+    };
+
+    const fallbackMovies = [
+      { id:'tt0133093', name:'The Matrix', poster:'https://images.metahub.space/poster/small/tt0133093/img', year:'1999', imdbRating:'8.7', description:'האקר מגלה שהעולם שהוא מכיר הוא סימולציה ומצטרף למרד על עתיד האנושות.' },
+      { id:'tt0816692', name:'Interstellar', poster:'https://images.metahub.space/poster/small/tt0816692/img', year:'2014', imdbRating:'8.7', description:'מסע חלל מרהיב בניסיון למצוא בית חדש לאנושות.' },
+      { id:'tt4154796', name:'Avengers: Endgame', poster:'https://images.metahub.space/poster/small/tt4154796/img', year:'2019', imdbRating:'8.4', description:'סיום אפי לקשת של הנוקמים עם קרב גורלי על היקום.' },
+      { id:'tt0110912', name:'Pulp Fiction', poster:'https://images.metahub.space/poster/small/tt0110912/img', year:'1994', imdbRating:'8.9', description:'קלאסיקת פשע מסוגננת עם קווי עלילה שנשזרים יחד.' },
+      { id:'tt0468569', name:'The Dark Knight', poster:'https://images.metahub.space/poster/small/tt0468569/img', year:'2008', imdbRating:'9.0', description:'באטמן מתמודד מול הג׳וקר במאבק אפל על גות׳האם.' },
+      { id:'tt0120737', name:'The Lord of the Rings: The Fellowship of the Ring', poster:'https://images.metahub.space/poster/small/tt0120737/img', year:'2001', imdbRating:'8.8', description:'תחילת המסע לארץ התיכונה מול כוחות האופל.' }
+    ];
+
+    const $ = s => document.querySelector(s);
+    const movieGrid = $('#movieGrid');
+    const searchInput = $('#searchInput');
+    const playBtn = $('#playBtn');
+    const libraryBtn = $('#libraryBtn');
+    const trailerBtn = $('#trailerBtn');
+    const modalTrailerBtn = $('#modalTrailerBtn');
+    const modalLibraryBtn = $('#modalLibraryBtn');
+    const closePlayerBtn = $('#closePlayerBtn');
+    const playerModal = $('#playerModal');
+    const sourceList = $('#sourceList');
+    const playerMovieTitle = $('#playerMovieTitle');
+    const selectedSourceTitle = $('#selectedSourceTitle');
+    const selectedSourceText = $('#selectedSourceText');
+    const subtitleStatus = $('#subtitleStatus');
+    const featureTitle = $('#featureTitle');
+    const featureYear = $('#featureYear');
+    const featureImdb = $('#featureImdb');
+    const featurePlot = $('#featurePlot');
+    const heroVisual = $('#heroVisual');
+    const bufferingScreen = $('#buffering-screen');
+    const bufferingVideo = $('#buffering-video');
+function normalizeMovie(raw){
+      return {
+        id: raw.imdb_id  raw.id  '',
+        name: raw.name || 'Untitled',
+        poster: raw.poster || 'placeholder_light_gray_block.png',
+        year: raw.year || '--',
+        imdbRating: raw.imdbRating || '--',
+        description: raw.description || 'ללא תקציר זמין כרגע.'
+      };
+    }
+
+    function renderMovies(list){
+      movieGrid.innerHTML = '';
+      list.forEach(movie => {
+        const card = document.createElement('article');
+        card.className = 'card';
+        card.innerHTML = `
+          <img class="poster" src="${movie.poster}" alt="${movie.name}" loading="lazy">
+          <div class="card-body">
+            <div class="card-title">${movie.name}</div>
+            <div class="card-sub">
+              <span>${movie.year}</span>
+              <span class="rating-mini">IMDb ${movie.imdbRating}</span>
+            </div>
+          </div>
+        `;
+        card.addEventListener('click', () => setFeatureMovie(movie));
+        movieGrid.appendChild(card);
+      });
+    }
+
+    function setFeatureMovie(movie){
+      state.currentMovie = movie;
+      featureTitle.textContent = movie.name;
+      featureYear.textContent = movie.year;
+      featureImdb.textContent = IMDb ${movie.imdbRating};
+      featurePlot.textContent = movie.description;
+      heroVisual.style.backgroundImage = linear-gradient(90deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.18) 38%, rgba(0,0,0,.48) 100%), url('${movie.poster}');
+      playerMovieTitle.textContent = movie.name;
+    }
+
+    async function loadCatalog(){
+      const urls = [
+        ${ADDONS.cinemeta}/catalog/movie/top.json,
+        ${ADDONS.cinemeta}/catalog/movie/popular.json
+      ];
+
+      for (const url of urls){
+        try{
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (Array.isArray(data.metas) && data.metas.length){
+            const movies = data.metas.slice(0,18).map(normalizeMovie);
+            state.movies = movies;
+            state.filtered = movies;
+            renderMovies(movies);
+            setFeatureMovie(movies[0]);
+            return;
+          }
+        }catch(e){}
+      }
+
+      state.movies = fallbackMovies;
+      state.filtered = fallbackMovies;
+      renderMovies(fallbackMovies);
+      setFeatureMovie(fallbackMovies[0]);
+    }
+
+    function parseStreamQuality(name){
+      const lower = String(name || '').toLowerCase();
+      if (lower.includes('2160') || lower.includes('4k')) return '4K';
+      if (lower.includes('1080')) return '1080P';
+      return 'OTHER';
+    }
+
+    function parseUsers(name){
+      const m =
+        String(name  '').match(/👤\s*(\d+)/) 
+        String(name || '').match(/seed(?:s|ers)?[:\s]+(\d+)/i);
+      return m ? Number(m[1]) : 0;
+    }
+
+    function uniqSources(streams){
+      const picked = { '1080P': null, '4K': null };
+
+      streams.forEach(stream => {
+        const quality = parseStreamQuality(stream.name  stream.title  '');
+        const users = parseUsers(stream.name  stream.title  '');
+        const entry = {
+          quality,
+          users,
+          label: stream.title  stream.name  'Source',
+          raw: stream
+        };
+
+        if (quality === '1080P' && (!picked['1080P'] || users > picked['1080P'].users)) {
+          picked['1080P'] = entry;
+        }
+        if (quality === '4K' && (!picked['4K'] || users > picked['4K'].users)) {
+          picked['4K'] = entry;
+        }
+      });
+
+      return [picked['1080P'], picked['4K']].filter(Boolean);
+    }
+
+    async function loadSourcesForMovie(movie){
+      try{
+        const res = await fetch(`${ADDONS.torrentio}/stream/movie/${movie.id}.json`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const best = uniqSources(Array.isArray(data.streams) ? data.streams : []);
+        if (best.length) return best;
+      }catch(e){}
+
+      return [
+        { quality:'1080P', users:231, label:`${movie.name} - 1080P / הכי הרבה משתמשים`, raw:null },
+        { quality:'4K', users:88, label:`${movie.
+name} - 4K / הכי הרבה משתמשים`, raw:null }
+      ];
+    }
+
+    async function loadHebrewSubtitle(movie){
+      const urls = [
+        ${ADDONS.subtitles}/subtitles/movie/${movie.id}.json,
+        ${ADDONS.subtitlesLegacy}/subtitles/movie/${movie.id}.json,
+        ${ADDONS.wizdom}/subtitles/movie/${movie.id}.json
+      ];
+
+      for (const url of urls){
+        try{
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const data = await res.json();
+          const items = Array.isArray(data.subtitles) ? data.subtitles : Array.isArray(data) ? data : [];
+          const heb =
+            items.find(s => String(s.lang  s.language  '').toLowerCase().includes('he')) ||
+            items.find(s => String(s.label || '').includes('עבר'));
+          if (heb) return heb;
+        }catch(e){}
+      }
+
+      return null;
+    }
+
+    function renderSourceOptions(){
+      sourceList.innerHTML = '';
+      state.sources.forEach((source, idx) => {
+        const el = document.createElement('div');
+        el.className = source-card ${idx === 0 ? 'active' : ''};
+        el.innerHTML = `
+          <div class="source-top">
+            <div class="source-quality">${source.quality}</div>
+            <div class="source-users">${source.users} משתמשים</div>
+          </div>
+          <div class="source-name">${source.label}</div>
+        `;
+        el.addEventListener('click', () => selectSource(idx));
+        sourceList.appendChild(el);
+      });
+    }
+
+    function selectSource(idx){
+      state.selectedSource = state.sources[idx] || null;
+      [...sourceList.children].forEach((card, i) => card.classList.toggle('active', i === idx));
+
+      if (state.selectedSource){
+        selectedSourceTitle.textContent = ${state.currentMovie.name} · ${state.selectedSource.quality};
+        selectedSourceText.textContent = ${state.selectedSource.label} · ברירת מחדל 1080P. אפשר לעבור ל־4K רק אם קיים מקור.;
+      }
+    }
+
+    async function openPlayer(){
+      if (!state.currentMovie) return;
+
+      bufferingScreen.classList.add('active');
+      bufferingVideo.currentTime = 0;
+      bufferingVideo.play().catch(() => {});
+
+      const [sources, subtitle] = await Promise.all([
+        loadSourcesForMovie(state.currentMovie),
+        loadHebrewSubtitle(state.currentMovie)
+      ]);
+
+      state.sources = sources.sort((a, b) => {
+        const order = { '1080P': 0, '4K': 1, 'OTHER': 2 };
+        return (order[a.quality] ?? 9) - (order[b.quality] ?? 9);
+      });
+
+      renderSourceOptions();
+      selectSource(0);
+
+      subtitleStatus.textContent = subtitle
+        ? 'נמצאה כתובית עברית תואמת ותועדף אוטומטית.'
+        : 'לא נמצאה כרגע כתובית עברית חיה. יוצג מצב ברירת מחדל.';
+
+      setTimeout(() => {
+        bufferingScreen.classList.remove('active');
+        bufferingVideo.pause();
+        playerModal.classList.add('open');
+        playerModal.setAttribute('aria-hidden', 'false');
+      }, 3000);
+    }
+
+    function closePlayer(){
+      playerModal.classList.remove('open');
+      playerModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function saveToLibrary(){
+      if (!state.currentMovie) return;
+      const key = 'moviko-library';
+      const current = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!current.find(x => x.id === state.currentMovie.id)) current.push(state.currentMovie);
+      localStorage.setItem(key, JSON.stringify(current));
+      libraryBtn.textContent = 'נשמר';
+      modalLibraryBtn.textContent = 'נשמר';
+      setTimeout(() => {
+        libraryBtn.textContent = 'ADD TO LIBRARY';
+        modalLibraryBtn.textContent = 'ADD TO LIBRARY';
+      }, 1400);
+    }
+
+    function openTrailer(){
+      if (!state.currentMovie) return;
+      const q = encodeURIComponent(`${state.currentMovie.name} official trailer`);
+      window.open(`https://www.youtube.com/results?search_query=${q}`, '_blank');
+    }
+
+    function filterMovies(term){
+      const q = term.trim().toLowerCase();
+      state.filtered = !q
+        ? state.movies
+        : state.movies.filter(movie => movie.name.toLowerCase().includes(q));
+renderMovies(state.filtered);
+      if (state.filtered[0]) setFeatureMovie(state.filtered[0]);
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      const splash = $('#splash-screen');
+      const splashVideo = $('#splash-video');
+      const splashOverlay = $('#splash-overlay');
+
+      if (splashVideo) splashVideo.play().catch(() => {});
+
+      if (splashOverlay && splashVideo){
+        splashOverlay.addEventListener('click', () => {
+          splashVideo.muted = false;
+          splashVideo.play().catch(() => {});
+          splashOverlay.style.display = 'none';
+        });
+      }
+
+      setTimeout(() => {
+        splash.classList.add('fade-out');
+        setTimeout(() => splash.style.display = 'none', 450);
+      }, 8000);
+
+      await loadCatalog();
+
+      searchInput.addEventListener('input', e => filterMovies(e.target.value));
+      playBtn.addEventListener('click', openPlayer);
+      libraryBtn.addEventListener('click', saveToLibrary);
+      trailerBtn.addEventListener('click', openTrailer);
+      modalTrailerBtn.addEventListener('click', openTrailer);
+      modalLibraryBtn.addEventListener('click', saveToLibrary);
+      closePlayerBtn.addEventListener('click', closePlayer);
+    });
+  </script>
+</body>
+</html>

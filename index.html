@@ -1,497 +1,1388 @@
 <!DOCTYPE html>
-<!--
-  MOVIKO – simple movie‑streaming interface (Hebrew)
-
-  This file implements the core front‑end for the MOVIKO project.  It focuses
-  on a clean, easy‑to‑use UI that presents movies only (no series) and
-  supports a right‑to‑left Hebrew interface.  The splash screen (splash.mp4)
-  is shown on first load with muted audio to satisfy modern browser
-  autoplay policies.  Users can enable sound manually via a button as
-  recommended by autoplay guidelines: Chrome and Firefox block videos with
-  sound until there is user interaction, while muted videos may autoplay
-  without restrictions【614481664182217†L64-L90】.  A buffering animation
-  (buffering.mp4) is shown as a circular loader before playback.  The
-  UI provides Play, Trailer and Add‑to‑Library buttons for each movie.  Saved
-  movies are stored using the Web Storage API; data persists across
-  browser sessions because `localStorage` keeps values without an
-  expiration time【252887741188659†L186-L194】.
-
-  To make this file fully functional you need to provide the media assets
-  (splash.mp4, buffering.mp4, logopop_tlv.png) alongside this file and
-  implement the backend/proxy that fetches playable streams from Torrentio
-  or another streaming add‑on.  The functions in this file demonstrate how
-  to sort streams by resolution and popularity, auto‑select 1080p sources,
-  and prefer Hebrew subtitles; they can be wired into your backend.
--->
 <html lang="he" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MOVIKO – סטרימינג סרטים</title>
-  <!-- Use the customised popcorn logo as the favicon -->
-  <link rel="icon" type="image/png" href="logopop_tlv.png">
-  <!-- Basic reset and dark‑theme styling -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOVIKO</title>
+  <link rel="icon" type="image/png" href="logopop_tlv.png" />
   <style>
-    html, body {
+    :root {
+      --bg: #06070b;
+      --panel: rgba(17, 19, 27, 0.92);
+      --panel-2: rgba(24, 27, 37, 0.96);
+      --line: rgba(255,255,255,0.08);
+      --text: #f5f7fb;
+      --muted: #9aa3b2;
+      --gold: #f7c75a;
+      --red: #ff4545;
+      --blue: #5bb9ff;
+      --green: #4ce39a;
+      --shadow: 0 18px 50px rgba(0,0,0,0.45);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
       margin: 0;
-      padding: 0;
-      font-family: system-ui, sans-serif;
-      background-color: #0f0f0f;
-      color: #f5f5f5;
-      direction: rtl;
+      font-family: Inter, Arial, Helvetica, sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(91,185,255,0.10), transparent 20%),
+        radial-gradient(circle at top left, rgba(247,199,90,0.08), transparent 22%),
+        linear-gradient(180deg, #06070b 0%, #0a0c12 100%);
+      color: var(--text);
+      min-height: 100vh;
       overflow-x: hidden;
     }
-    a { color: inherit; text-decoration: none; }
+
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
     .hidden { display: none !important; }
-    /* Splash screen covers the entire viewport */
+
     #splash {
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-color: #000;
+      inset: 0;
+      background: #000;
+      z-index: 3000;
       display: flex;
-      justify-content: center;
       align-items: center;
+      justify-content: center;
       flex-direction: column;
-      z-index: 9999;
+      gap: 20px;
     }
+
     #splash video {
       width: 100%;
       height: 100%;
       object-fit: cover;
-    }
-    #splash button {
       position: absolute;
-      bottom: 10%;
-      right: 50%;
-      transform: translateX(50%);
-      padding: 1rem 1.5rem;
-      font-size: 1rem;
-      border: none;
-      border-radius: 4px;
-      background-color: #ffcc00;
-      color: #000;
-      cursor: pointer;
-      opacity: 0.9;
+      inset: 0;
     }
-    /* Header containing the logo and library button */
-    header {
+
+    #splashOverlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.2), rgba(0,0,0,0.72));
+    }
+
+    #splashContent {
+      position: relative;
+      z-index: 2;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: space-between;
-      padding: 1rem;
-      background-color: #1a1a1a;
+      gap: 14px;
+      text-align: center;
+      padding: 24px;
+    }
+
+    .brand-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 999px;
+      background: rgba(0,0,0,0.35);
+      backdrop-filter: blur(12px);
+    }
+
+    .brand-chip img {
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
+    }
+
+    .splash-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 16px;
+      padding: 13px 18px;
+      transition: 0.22s ease;
+      font-weight: 700;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: linear-gradient(135deg, #f7c75a, #ffd98b); color: #111; }
+    .btn-dark { background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.08); }
+    .btn-red { background: linear-gradient(135deg, #ff5050, #ff7979); color: #fff; }
+    .btn-blue { background: linear-gradient(135deg, #49b1ff, #74cbff); color: #081018; }
+    .btn-green { background: linear-gradient(135deg, #40d896, #75ecb7); color: #081810; }
+    .btn-outline {
+      background: transparent;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    header {
       position: sticky;
       top: 0;
-      z-index: 10;
+      z-index: 100;
+      backdrop-filter: blur(18px);
+      background: rgba(6,7,11,0.72);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
     }
-    header img.logo {
-      height: 40px;
+
+    .topbar {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 16px 22px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 16px;
     }
-    header button.library-btn {
-      background-color: transparent;
+
+    .logo-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 900;
+      font-size: 24px;
+      letter-spacing: 0.04em;
+    }
+
+    .logo-wrap img {
+      width: 42px;
+      height: 42px;
+      object-fit: contain;
+      filter: drop-shadow(0 6px 18px rgba(247,199,90,0.18));
+    }
+
+    .search-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 18px;
+      padding: 10px 14px;
+      min-height: 54px;
+    }
+
+    .search-wrap input {
+      width: 100%;
       border: none;
-      color: #ffcc00;
-      font-size: 1.1rem;
-      cursor: pointer;
+      background: transparent;
+      color: #fff;
+      outline: none;
+      font-size: 16px;
     }
-    /* Movie list container */
-    .movies {
+
+    .search-wrap input::placeholder { color: #8d95a6; }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .status-badge {
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: var(--muted);
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 24px 22px 80px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.25fr 0.75fr;
+      gap: 18px;
+      margin-bottom: 26px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .hero-main {
+      padding: 28px;
+      min-height: 270px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)),
+        radial-gradient(circle at top left, rgba(247,199,90,0.08), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(91,185,255,0.08), transparent 34%),
+        rgba(17, 19, 27, 0.92);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.07);
+      color: var(--gold);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    h1 {
+      font-size: clamp(30px, 4vw, 54px);
+      margin: 14px 0 10px;
+      line-height: 1.02;
+      letter-spacing: -0.03em;
+    }
+
+    .hero-main p {
+      margin: 0;
+      color: #c7cedb;
+      font-size: 17px;
+      max-width: 740px;
+      line-height: 1.7;
+    }
+
+    .hero-side {
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      justify-content: space-between;
+    }
+
+    .side-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .side-line strong { font-size: 15px; }
+    .side-line span { color: var(--muted); font-size: 13px; }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .section-head h2 {
+      font-size: 24px;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+
+    .filters {
       display: flex;
       flex-wrap: wrap;
-      gap: 1rem;
-      padding: 1rem;
-      justify-content: center;
+      gap: 10px;
+      margin-bottom: 22px;
     }
+
+    .filter-chip {
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 999px;
+      font-weight: 700;
+    }
+
+    .filter-chip.active {
+      background: rgba(247,199,90,0.12);
+      color: var(--gold);
+      border-color: rgba(247,199,90,0.22);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 18px;
+    }
+
     .movie-card {
-      background-color: #1e1e1e;
-      border-radius: 8px;
-      width: 200px;
       overflow: hidden;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+      border-radius: 24px;
+      background: var(--panel-2);
+      border: 1px solid rgba(255,255,255,0.06);
+      box-shadow: var(--shadow);
       display: flex;
       flex-direction: column;
+      min-height: 430px;
+      transition: 0.22s ease;
     }
-    .movie-card img.poster {
-      width: 100%;
-      height: 300px;
-      object-fit: cover;
+
+    .movie-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(247,199,90,0.18);
     }
-    .movie-card .info {
-      padding: 0.5rem;
-      flex: 1;
+
+    .poster {
+      position: relative;
+      aspect-ratio: 2 / 3;
+      display: flex;
+      align-items: flex-end;
+      padding: 16px;
+      background-size: cover;
+      background-position: center;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .poster::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.04), rgba(0,0,0,0.92));
+      z-index: -1;
+    }
+
+    .poster-badges {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(8px);
+    }
+
+    .badge-gold { color: var(--gold); }
+    .badge-blue { color: #8fd6ff; }
+    .badge-red { color: #ff9696; }
+    .badge-green { color: #87f0bf; }
+
+    .poster-title {
+      font-size: 24px;
+      font-weight: 900;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      max-width: 90%;
+      text-shadow: 0 5px 24px rgba(0,0,0,0.65);
+    }
+
+    .card-body {
+      padding: 16px;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-    }
-    .movie-card .title {
-      font-size: 1rem;
-      margin-bottom: 0.5rem;
-      font-weight: bold;
-    }
-    .movie-card .actions {
-      display: flex;
-      justify-content: space-between;
-      gap: 0.3rem;
-    }
-    .movie-card button {
+      gap: 12px;
       flex: 1;
-      padding: 0.4rem;
-      font-size: 0.9rem;
+    }
+
+    .meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      flex-wrap: wrap;
+    }
+
+    .description {
+      color: #ccd3df;
+      font-size: 14px;
+      line-height: 1.7;
+      min-height: 72px;
+    }
+
+    .card-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-top: auto;
+    }
+
+    .card-actions button {
+      padding: 12px 10px;
+      border-radius: 14px;
       border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      color: #000;
+      font-weight: 800;
+      font-size: 14px;
     }
-    .play-btn { background-color: #ff4444; }
-    .trailer-btn { background-color: #00ccff; }
-    .library-btn { background-color: #ffcc00; }
-    /* Buffering overlay – covers the whole viewport during loading */
-    #buffering {
+
+    .details-shell {
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      backdrop-filter: blur(4px);
-      background-color: rgba(0,0,0,0.7);
+      inset: 0;
+      background: rgba(0,0,0,0.74);
+      backdrop-filter: blur(16px);
+      z-index: 2000;
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
+      padding: 24px;
     }
-    #buffering .loader {
-      width: 150px;
-      height: 150px;
+
+    .details-card {
+      width: min(1100px, 100%);
+      max-height: calc(100vh - 48px);
+      overflow: auto;
+      background: rgba(11,13,19,0.98);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .details-hero {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 20px;
+      padding: 20px;
+    }
+
+    .details-poster {
+      min-height: 460px;
+      border-radius: 24px;
+      overflow: hidden;
+      background-size: cover;
+      background-position: center;
+      position: relative;
+    }
+
+    .details-poster::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.02), rgba(0,0,0,0.5));
+    }
+
+    .details-body {
+      padding: 10px 6px 10px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .close-x {
+      position: sticky;
+      top: 14px;
+      margin-inline-start: auto;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+      font-size: 20px;
+      z-index: 4;
+    }
+
+    .source-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .source-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .source-title {
+      font-weight: 800;
+      font-size: 15px;
+    }
+
+    .source-sub {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 4px;
+      line-height: 1.5;
+    }
+
+    .library-modal, .auth-modal, .buffer-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.72);
+      backdrop-filter: blur(14px);
+      z-index: 2200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .modal-card {
+      width: min(520px, 100%);
+      background: rgba(10,12,18,0.98);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 28px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .modal-card h3 {
+      margin: 0 0 8px;
+      font-size: 28px;
+    }
+
+    .modal-card p {
+      margin: 0 0 18px;
+      color: #b7c0cf;
+      line-height: 1.7;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .field label {
+      color: #cfd6e2;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .field input {
+      width: 100%;
+      height: 54px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.05);
+      color: #fff;
+      padding: 0 14px;
+      outline: none;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .auth-switch {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .auth-switch button {
+      background: none;
+      border: none;
+      color: var(--gold);
+      font-weight: 800;
+      padding: 0;
+    }
+
+    .library-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 14px;
+      margin-top: 16px;
+      max-height: 58vh;
+      overflow: auto;
+    }
+
+    .library-card {
+      border-radius: 20px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+
+    .library-card .mini-poster {
+      aspect-ratio: 2 / 3;
+      background-size: cover;
+      background-position: center;
+    }
+
+    .library-card .mini-body {
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .buffer-box {
+      display: grid;
+      place-items: center;
+      gap: 18px;
+      width: min(360px, 100%);
+      padding: 28px;
+      border-radius: 28px;
+      background: rgba(10,12,18,0.98);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .loader-circle {
+      width: 140px;
+      height: 140px;
       border-radius: 50%;
       overflow: hidden;
-    }
-    #buffering .loader video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    /* Library modal */
-    #libraryModal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0,0,0,0.9);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      overflow-y: auto;
-      z-index: 1001;
-      padding: 2rem 1rem;
-    }
-    #libraryModal h2 {
-      margin-bottom: 1rem;
-    }
-    #libraryModal .library-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
-      justify-content: center;
-      width: 100%;
-    }
-    #libraryModal .library-card {
-      background-color: #1e1e1e;
-      border-radius: 8px;
-      width: 180px;
-      overflow: hidden;
-      text-align: center;
-    }
-    #libraryModal .library-card img {
-      width: 100%;
-      height: 260px;
-      object-fit: cover;
-    }
-    #libraryModal .library-card .title {
-      padding: 0.5rem;
-      font-size: 0.9rem;
-    }
-    #libraryModal button.close-btn {
-      margin-top: 1rem;
-      padding: 0.5rem 1rem;
-      background-color: #ff4444;
-      color: #fff;
+      display: grid;
+      place-items: center;
+      background: #000;
       border: none;
-      border-radius: 4px;
-      font-size: 1rem;
-      cursor: pointer;
+      outline: none;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.02);
+    }
+
+    .loader-circle video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border: none;
+      outline: none;
+      display: block;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 28px 10px 8px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 1024px) {
+      .hero, .details-hero { grid-template-columns: 1fr; }
+      .topbar { grid-template-columns: 1fr; }
+      .top-actions { justify-content: stretch; }
+      .card-actions { grid-template-columns: 1fr; }
+      .details-poster { min-height: 360px; }
+    }
+
+    @media (max-width: 680px) {
+      main { padding-inline: 14px; }
+      .topbar { padding-inline: 14px; }
+      .hero-main, .hero-side, .modal-card, .buffer-box { padding: 18px; }
+      .logo-wrap { font-size: 20px; }
+      h1 { font-size: 30px; }
+      .grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+      .movie-card { min-height: 390px; }
+      .poster-title { font-size: 20px; }
     }
   </style>
 </head>
 <body>
-  <!-- Splash screen with introductory video.  The video is muted to comply
-       with browser autoplay policies; users can enable sound via the button. -->
   <div id="splash">
     <video id="splashVideo" autoplay muted playsinline>
-      <source src="splash.mp4" type="video/mp4">
-      הדפדפן שלך אינו תומך בוידאו.
+      <source src="splash.mp4" type="video/mp4" />
     </video>
-    <button id="splashSoundBtn">הפעל פתיח עם קול</button>
-  </div>
-
-  <!-- Main page header -->
-  <header id="mainHeader" class="hidden">
-    <img src="logopop_tlv.png" alt="MOVIKO logo" class="logo">
-    <button class="library-btn" id="openLibraryBtn">הספריה שלי</button>
-  </header>
-
-  <!-- Movie list container -->
-  <div id="moviesContainer" class="movies hidden">
-    <!-- Movie cards will be generated dynamically -->
-  </div>
-
-  <!-- Buffering overlay -->
-  <div id="buffering" class="hidden">
-    <div class="loader">
-      <video autoplay loop muted playsinline>
-        <source src="buffering.mp4" type="video/mp4">
-      </video>
+    <div id="splashOverlay"></div>
+    <div id="splashContent">
+      <div class="brand-chip">
+        <img src="logopop_tlv.png" alt="MOVIKO" />
+        <span>MOVIKO</span>
+      </div>
+      <h2 style="margin:0;font-size:clamp(30px,5vw,56px);letter-spacing:-0.04em;">ממשק סרטים פשוט, נקי ופרימיום</h2>
+      <div class="splash-actions">
+        <button class="btn btn-primary" id="enterAppBtn">כניסה לאפליקציה</button>
+        <button class="btn btn-dark" id="enableSplashSoundBtn">הפעל פתיח עם קול</button>
+      </div>
     </div>
   </div>
 
-  <!-- Library modal -->
-  <div id="libraryModal" class="hidden">
-    <h2>הספריה שלי</h2>
-    <div class="library-list" id="libraryList"></div>
-    <button class="close-btn" id="closeLibraryBtn">סגור</button>
+  <header class="hidden" id="appHeader">
+    <div class="topbar">
+      <div class="logo-wrap">
+        <img src="logopop_tlv.png" alt="MOVIKO" />
+        <span>MOVIKO</span>
+      </div>
+
+      <div class="search-wrap">
+        <span>🔎</span>
+        <input id="searchInput" type="search" placeholder="חיפוש סרטים..." />
+      </div>
+
+      <div class="top-actions">
+        <div class="status-badge" id="authStatus">אורח · 4K נעול</div>
+        <button class="btn btn-dark" id="signInBtn">Sign In</button>
+        <button class="btn btn-outline" id="signUpBtn">Sign Up</button>
+        <button class="btn btn-dark" id="libraryBtn">הספריה שלי</button>
+        <button class="btn btn-dark hidden" id="logoutBtn">התנתק</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="hidden" id="appMain">
+    <section class="hero">
+      <div class="hero-main panel">
+        <div>
+          <div class="eyebrow">🎬 MOVIKO · סרטים בלבד</div>
+          <h1>קל, מהיר, ברור.<br />פחות בלגן. יותר צפייה.</h1>
+          <p>
+            הקוד הזה פותר את כפתורי ההתחברות והרישום, מוסיף ספריה אמיתית, מציג קטלוג רחב יותר,
+            ומסתיר תוכן 4K לאורחים. ברגע שמשתמש נרשם או מתחבר — התוכן הנוסף נפתח.
+          </p>
+        </div>
+        <div class="splash-actions" style="justify-content:flex-start;">
+          <button class="btn btn-primary" id="heroSignUpBtn">הרשמה לפתיחת 4K</button>
+          <button class="btn btn-dark" id="heroBrowseBtn">עיון בקטלוג</button>
+        </div>
+      </div>
+
+      <div class="hero-side panel">
+        <div class="side-line">
+          <div>
+            <strong>מצב 4K</strong>
+            <span id="hero4kStatus">נעול לאורח</span>
+          </div>
+          <span>🔒</span>
+        </div>
+        <div class="side-line">
+          <div>
+            <strong>ברירת מחדל</strong>
+            <span>1080P קודם, 4K רק למשתמשים רשומים</span>
+          </div>
+          <span>1080P</span>
+        </div>
+        <div class="side-line">
+          <div>
+            <strong>משתמש ברירת מחדל</strong>
+            <span>MOVIKO / MOVIKO4K</span>
+          </div>
+          <span>👤</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>קטלוג הסרטים</h2>
+        <div class="status-badge" id="resultsCount"></div>
+      </div>
+
+      <div class="filters" id="filtersWrap"></div>
+      <div class="grid" id="moviesGrid"></div>
+    </section>
+  </main>
+
+  <div class="details-shell hidden" id="detailsModal"></div>
+
+  <div class="library-modal hidden" id="libraryModal">
+    <div class="modal-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <h3>הספריה שלי</h3>
+        <button class="close-x" id="closeLibraryModal">×</button>
+      </div>
+      <p>כאן נשמרים כל הסרטים שסימנת. השמירה מבוצעת מקומית בדפדפן.</p>
+      <div id="libraryContent"></div>
+    </div>
+  </div>
+
+  <div class="auth-modal hidden" id="authModal">
+    <div class="modal-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div>
+          <h3 id="authTitle">התחברות</h3>
+          <p id="authText">התחבר כדי לפתוח את תוכן ה־4K ולשמור גישה מלאה.</p>
+        </div>
+        <button class="close-x" id="closeAuthModal">×</button>
+      </div>
+
+      <form id="authForm">
+        <div class="field">
+          <label for="authUsername">שם משתמש</label>
+          <input id="authUsername" autocomplete="username" required />
+        </div>
+        <div class="field">
+          <label for="authPassword">סיסמה</label>
+          <input id="authPassword" type="password" autocomplete="current-password" required />
+        </div>
+        <div class="hint" id="authHint">משתמש קיים מוכן כבר עכשיו: <strong>MOVIKO</strong> / <strong>MOVIKO4K</strong></div>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary" id="authSubmitBtn">התחברות</button>
+          <button type="button" class="btn btn-dark" id="authCancelBtn">ביטול</button>
+        </div>
+      </form>
+
+      <div class="auth-switch">
+        <span id="authSwitchText">אין לך חשבון?</span>
+        <button id="authSwitchBtn">להרשמה</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="buffer-modal hidden" id="bufferModal">
+    <div class="buffer-box">
+      <div class="loader-circle">
+        <video autoplay muted loop playsinline>
+          <source src="buffering.mp4" type="video/mp4" />
+        </video>
+      </div>
+      <div style="font-size:22px;font-weight:900;">טוען מקור ניגון…</div>
+      <div class="hint">האנימציה עגולה ללא מסגרת לבנה, לפי הדרישה.</div>
+    </div>
   </div>
 
   <script>
-    /* =================== Data Structures =================== */
-    // Each movie object should at minimum have: id, title, poster (image URL),
-    // trailer (URL), and an array of streams returned by your backend.  For
-    // demonstration purposes we'll use a placeholder list.  Replace this
-    // placeholder with a call to your backend that fetches available movies
-    // through the Cinemeta API or another source.
-    const movies = [
-      {
-        id: 'movie1',
-        title: 'סרט לדוגמה 1',
-        poster: 'https://via.placeholder.com/400x600?text=Movie+1',
-        trailer: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-        streams: [
-          { name: '4K • 100 משתמשים', url: '#', resolution: '4K', userCount: 100 },
-          { name: '1080p • 450 משתמשים', url: '#', resolution: '1080p', userCount: 450 }
-        ]
-      },
-      {
-        id: 'movie2',
-        title: 'סרט לדוגמה 2',
-        poster: 'https://via.placeholder.com/400x600?text=Movie+2',
-        trailer: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-        streams: [
-          { name: '1080p • 200 משתמשים', url: '#', resolution: '1080p', userCount: 200 },
-          { name: '720p • 50 משתמשים', url: '#', resolution: '720p', userCount: 50 }
-        ]
-      }
+    const STORAGE_KEYS = {
+      library: 'moviko_library_v3',
+      users: 'moviko_users_v3',
+      session: 'moviko_session_v3'
+    };
+
+    const DEFAULT_USER = { username: 'MOVIKO', password: 'MOVIKO4K', premium4k: true };
+    const GENRES = ['הכל', 'אקשן', 'מדע בדיוני', 'קומדיה', 'דרמה', 'מתח', 'אנימציה'];
+
+    function makePoster(title, c1, c2) {
+      const safe = encodeURIComponent(title);
+      return `data:image/svg+xml;utf8,\
+      <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 1200'>\
+        <defs>\
+          <linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>\
+            <stop offset='0%' stop-color='${c1}'/>\
+            <stop offset='100%' stop-color='${c2}'/>\
+          </linearGradient>\
+        </defs>\
+        <rect width='800' height='1200' fill='url(%23g)'/>\
+        <circle cx='120' cy='150' r='170' fill='rgba(255,255,255,0.08)'/>\
+        <circle cx='720' cy='1030' r='210' fill='rgba(255,255,255,0.06)'/>\
+        <rect x='55' y='815' width='690' height='260' rx='40' fill='rgba(0,0,0,0.34)'/>\
+        <text x='400' y='940' text-anchor='middle' font-family='Arial' font-size='72' font-weight='900' fill='white'>${safe}</text>\
+      </svg>`;
+    }
+
+    const MOVIES = [
+      { id:'m1', title:'פולס לילה', year:2026, genre:'אקשן', rating:8.7, duration:'121 דק׳', desc:'מרדף אורבני חד, מהיר ונקי סביב לילה אחד שמשנה הכול.', poster:makePoster('פולס לילה','#1d3f72','#070b12') },
+      { id:'m2', title:'מסלול אפס', year:2025, genre:'מדע בדיוני', rating:8.5, duration:'133 דק׳', desc:'צוות קטן במשימה קיצונית מגלה שהאיום האמיתי נמצא בתוך המערכת.', poster:makePoster('מסלול אפס','#4d2c8d','#0a0b10') },
+      { id:'m3', title:'עיר של זכוכית', year:2024, genre:'מתח', rating:8.1, duration:'118 דק׳', desc:'בלש אחד, עיר שקופה מדי, וסוד שאיש לא היה אמור לראות.', poster:makePoster('עיר של זכוכית','#0f6d6b','#071015') },
+      { id:'m4', title:'סיבוב אחרון', year:2026, genre:'דרמה', rating:8.0, duration:'111 דק׳', desc:'נהג ותיק מקבל נסיעה אחרונה שמחזירה אותו לכל מה שניסה לשכוח.', poster:makePoster('סיבוב אחרון','#894233','#110908') },
+      { id:'m5', title:'פופקורן אדום', year:2025, genre:'קומדיה', rating:7.8, duration:'102 דק׳', desc:'כאוס קולנועי מבריק עם טון שחור, מהיר ומודע לעצמו.', poster:makePoster('פופקורן אדום','#7a1324','#13070a') },
+      { id:'m6', title:'רכבת צללים', year:2024, genre:'מתח', rating:8.3, duration:'126 דק׳', desc:'כל הקרונות נראים רגילים — עד שהאור נכבה בפעם הראשונה.', poster:makePoster('רכבת צללים','#2a2c59','#07080f') },
+      { id:'m7', title:'מטריקס כחול', year:2026, genre:'מדע בדיוני', rating:8.9, duration:'137 דק׳', desc:'פריצה אחת שגויה שולחת לוחמת קוד אל גרסה חלופית של תל אביב.', poster:makePoster('מטריקס כחול','#094f8d','#03070a') },
+      { id:'m8', title:'שומרי הרחוב', year:2025, genre:'אקשן', rating:7.9, duration:'115 דק׳', desc:'קבוצת לוחמים שכונתית מגלה שהם המגן האחרון של העיר.', poster:makePoster('שומרי הרחוב','#66510f','#0c0903') },
+      { id:'m9', title:'הלב המכני', year:2024, genre:'דרמה', rating:8.2, duration:'119 דק׳', desc:'סיפור אינטימי על אדם שנאלץ לבחור בין זיכרון לבין הישרדות.', poster:makePoster('הלב המכני','#2b5d52','#08100d') },
+      { id:'m10', title:'קומת מינוס', year:2026, genre:'אקשן', rating:8.4, duration:'109 דק׳', desc:'מבצע חילוץ במבנה תת־קרקעי שהופך למלכודת סגורה.', poster:makePoster('קומת מינוס','#6a1d1d','#110707') },
+      { id:'m11', title:'גלקסיית שישי', year:2025, genre:'אנימציה', rating:8.1, duration:'98 דק׳', desc:'הרפתקה צבעונית, חכמה ומהירה שמתאימה גם לילדים וגם למבוגרים.', poster:makePoster('גלקסיית שישי','#2954a3','#06101b') },
+      { id:'m12', title:'קו החוף', year:2024, genre:'דרמה', rating:7.7, duration:'104 דק׳', desc:'חברות שנשחקה עם השנים חוזרת לרגע מבחן על קו המים.', poster:makePoster('קו החוף','#2f6f83','#071015') },
+      { id:'m13', title:'חדר 909', year:2026, genre:'מתח', rating:8.6, duration:'124 דק׳', desc:'כל מי שנכנס לחדר הזה שומע גרסה אחרת של האמת.', poster:makePoster('חדר 909','#36354f','#090913') },
+      { id:'m14', title:'כוכב רחוק', year:2025, genre:'מדע בדיוני', rating:8.8, duration:'142 דק׳', desc:'כשהמסלול משתבש, הצוות מבין שאף אחד לא חוזר בדיוק כמו שיצא.', poster:makePoster('כוכב רחוק','#3753b7','#050713') },
+      { id:'m15', title:'צחוק אחרון', year:2024, genre:'קומדיה', rating:7.6, duration:'96 דק׳', desc:'לילה אחד של טעויות קטנות הופך לשרשרת של אסונות מצחיקים.', poster:makePoster('צחוק אחרון','#8a5b19','#130e05') },
+      { id:'m16', title:'רעש לבן', year:2026, genre:'אקשן', rating:8.1, duration:'117 דק׳', desc:'יחידת סייבר רודפת אחרי אות ששובר מערכות ברחבי העיר.', poster:makePoster('רעש לבן','#4e555f','#07090d') },
+      { id:'m17', title:'הקרנה פרטית', year:2025, genre:'מתח', rating:8.0, duration:'101 דק׳', desc:'הקרנה סגורה לקהל קטן חושפת חומר שלא היה צריך להגיע למסך.', poster:makePoster('הקרנה פרטית','#5f2440','#0d0610') },
+      { id:'m18', title:'שומר הזמן', year:2024, genre:'מדע בדיוני', rating:8.3, duration:'128 דק׳', desc:'אדם אחד עם גישה לדקות אבודות מגלה שהמחיר גבוה מהצפוי.', poster:makePoster('שומר הזמן','#165f7f','#071118') },
+      { id:'m19', title:'רחוב קינג', year:2025, genre:'דרמה', rating:7.9, duration:'113 דק׳', desc:'דרמת רחוב חכמה, רגישה ומדויקת על משפחה אחת בלחץ גבוה.', poster:makePoster('רחוב קינג','#74412d','#0f0806') },
+      { id:'m20', title:'תיק שחור', year:2026, genre:'אקשן', rating:8.5, duration:'122 דק׳', desc:'שליח אחד נדרש למסור תיק בלי לשאול שאלות — ואז פותח אותו.', poster:makePoster('תיק שחור','#1e1f2e','#080910') },
+      { id:'m21', title:'אינסוף קטן', year:2025, genre:'אנימציה', rating:8.2, duration:'94 דק׳', desc:'מסע עדין ויפה על ילד שבונה יקום קטן משלו.', poster:makePoster('אינסוף קטן','#4155a5','#080c1a') },
+      { id:'m22', title:'ללא מוצא', year:2024, genre:'מתח', rating:7.8, duration:'107 דק׳', desc:'שני זרים ננעלים במקום אחד ומבינים שמישהו צופה בהם.', poster:makePoster('ללא מוצא','#39454f','#080b10') },
+      { id:'m23', title:'אורות דרום', year:2026, genre:'דרמה', rating:8.1, duration:'116 דק׳', desc:'אחרי הפסקה ארוכה, מוזיקאי חוזר הביתה ומוצא חיים חדשים.', poster:makePoster('אורות דרום','#5b3f6f','#0d0711') },
+      { id:'m24', title:'קוד פתיחה', year:2025, genre:'אקשן', rating:8.4, duration:'120 דק׳', desc:'צעיר אחד מגלה מפתח דיגיטלי שמפעיל שרשרת אירועים מסוכנת.', poster:makePoster('קוד פתיחה','#0b5e66','#081011') }
     ];
 
-    /* =================== Helpers =================== */
-    // Parse resolution from a resolution string (e.g., "1080p" or "4K").  Returns
-    // a numeric value to facilitate sorting.  4K is treated as 4000, 1080p as
-    // 1080, 720p as 720, etc.  Unknown resolutions return 0.
-    function resolutionScore(res) {
-      if (!res) return 0;
-      const lower = res.toLowerCase();
-      if (lower.includes('4k')) return 4000;
-      const match = lower.match(/(\d{3,4})p/);
-      return match ? parseInt(match[1], 10) : 0;
+    const APP = {
+      state: {
+        filter: 'הכל',
+        query: '',
+        session: null,
+        authMode: 'signin',
+        currentMovie: null,
+      },
+      els: {}
+    };
+
+    function qs(sel) { return document.querySelector(sel); }
+    function qsa(sel) { return Array.from(document.querySelectorAll(sel)); }
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
     }
 
-    // Sort streams so that the best 1080p stream with most users comes first,
-    // followed by 4K and then other resolutions.  Within the same resolution
-    // category we sort by userCount descending.  Unknown userCount values are
-    // treated as lowest priority and displayed as "לא זוהה".
-    function sortStreams(streams) {
-      return streams.slice().sort((a, b) => {
-        const resA = resolutionScore(a.resolution);
-        const resB = resolutionScore(b.resolution);
-        // 1080p preferred even over 4K when both present
-        const preferredOrder = [1080, 4000];
-        const idxA = preferredOrder.indexOf(resA);
-        const idxB = preferredOrder.indexOf(resB);
-        if (idxA !== idxB) {
-          if (idxA === -1) return 1;
-          if (idxB === -1) return -1;
-          return idxA - idxB;
-        }
-        // within same category sort by userCount descending; unknowns last
-        const usersA = typeof a.userCount === 'number' ? a.userCount : -1;
-        const usersB = typeof b.userCount === 'number' ? b.userCount : -1;
-        return usersB - usersA;
-      });
+    function getUsers() {
+      const raw = localStorage.getItem(STORAGE_KEYS.users);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!parsed.some(u => u.username.toLowerCase() === DEFAULT_USER.username.toLowerCase())) {
+        parsed.unshift(DEFAULT_USER);
+        localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(parsed));
+      }
+      return parsed;
     }
 
-    // Format the user count display: return number if defined and >0;
-    // otherwise return "לא זוהה" (not recognized).
-    function formatUserCount(count) {
-      return (typeof count === 'number' && count > 0) ? count : 'לא זוהה';
+    function saveUsers(users) {
+      localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
     }
 
-    // Retrieve the library array from localStorage.  Data persists across
-    // sessions because localStorage has no expiration【252887741188659†L186-L194】.
     function getLibrary() {
       try {
-        const data = localStorage.getItem('movikoLibrary');
-        return data ? JSON.parse(data) : [];
-      } catch (err) {
-        console.error('Failed to parse library', err);
+        return JSON.parse(localStorage.getItem(STORAGE_KEYS.library) || '[]');
+      } catch {
         return [];
       }
     }
 
-    // Save the library array to localStorage
-    function saveLibrary(lib) {
+    function saveLibrary(list) {
+      localStorage.setItem(STORAGE_KEYS.library, JSON.stringify(list));
+    }
+
+    function getSession() {
       try {
-        localStorage.setItem('movikoLibrary', JSON.stringify(lib));
-      } catch (err) {
-        console.error('Failed to save library', err);
+        return JSON.parse(localStorage.getItem(STORAGE_KEYS.session) || 'null');
+      } catch {
+        return null;
       }
     }
 
-    // Add a movie to the library if it's not already present
-    function addToLibrary(movie) {
-      const lib = getLibrary();
-      if (!lib.some(item => item.id === movie.id)) {
-        lib.push({ id: movie.id, title: movie.title, poster: movie.poster });
-        saveLibrary(lib);
-        alert('הסרט נוסף לספריה');
+    function saveSession(session) {
+      if (!session) {
+        localStorage.removeItem(STORAGE_KEYS.session);
+        APP.state.session = null;
       } else {
-        alert('הסרט כבר קיים בספריה');
+        localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
+        APP.state.session = session;
       }
+      refreshAuthUi();
+      renderMovies();
     }
 
-    // Render the library modal
-    function renderLibrary() {
-      const lib = getLibrary();
-      const list = document.getElementById('libraryList');
-      list.innerHTML = '';
-      if (lib.length === 0) {
-        list.innerHTML = '<p>הספריה ריקה.</p>';
-        return;
-      }
-      lib.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'library-card';
-        card.innerHTML = `
-          <img src="${item.poster}" alt="${item.title}">
-          <div class="title">${item.title}</div>
-        `;
-        list.appendChild(card);
+    function isLoggedIn() {
+      return !!APP.state.session;
+    }
+
+    function canAccess4K() {
+      return !!APP.state.session?.premium4k;
+    }
+
+    function usersText(count) {
+      if (typeof count !== 'number' || count <= 0) return 'לא זוהה';
+      return `${count} משתמשים`;
+    }
+
+    function parseUsersFromLabel(label) {
+      if (!label) return null;
+      const match = String(label).match(/(\d{1,5})\s*(?:users|משתמשים|seeders|peers)/i);
+      return match ? Number(match[1]) : null;
+    }
+
+    function sourceTemplate(movie) {
+      const base = [
+        { quality: '1080P', provider: 'MOVIKO MAIN', users: 948, subtitle: 'עברית מועדפת', kind: 'default' },
+        { quality: '1080P', provider: 'MOVIKO FAST', users: 702, subtitle: 'עברית זמינה', kind: 'backup' },
+        { quality: '720P', provider: 'MOVIKO LIGHT', users: 381, subtitle: 'עברית זמינה', kind: 'fallback' }
+      ];
+
+      const premium = [
+        { quality: '4K', provider: 'MOVIKO ULTRA', users: 612, subtitle: 'עברית + איכות גבוהה', kind: 'premium' }
+      ];
+
+      const sources = canAccess4K() ? [base[0], premium[0], base[1], base[2]] : base;
+      return sources.map((s, idx) => ({
+        id: `${movie.id}_${idx}`,
+        title: `${s.quality} · ${s.provider}`,
+        quality: s.quality,
+        provider: s.provider,
+        users: parseUsersFromLabel(`${s.users} users`) ?? s.users,
+        subtitle: s.subtitle,
+        is4k: s.quality === '4K',
+        launchUrl: `#play-${movie.id}-${s.quality.toLowerCase()}`
+      }));
+    }
+
+    function filteredMovies() {
+      return MOVIES.filter(movie => {
+        const genreOk = APP.state.filter === 'הכל' || movie.genre === APP.state.filter;
+        const q = APP.state.query.trim().toLowerCase();
+        const queryOk = !q || movie.title.toLowerCase().includes(q) || movie.desc.toLowerCase().includes(q);
+        return genreOk && queryOk;
       });
     }
 
-    // Render movie cards onto the page
-    function renderMovies() {
-      const container = document.getElementById('moviesContainer');
-      movies.forEach(movie => {
-        const card = document.createElement('div');
-        card.className = 'movie-card';
-        card.innerHTML = `
-          <img class="poster" src="${movie.poster}" alt="${movie.title}">
-          <div class="info">
-            <div class="title">${movie.title}</div>
-            <div class="actions">
-              <button class="play-btn">הפעל</button>
-              <button class="trailer-btn">טריילר</button>
-              <button class="library-btn">הוסף לספריה</button>
+    function refreshAuthUi() {
+      const status = qs('#authStatus');
+      const hero = qs('#hero4kStatus');
+      const signInBtn = qs('#signInBtn');
+      const signUpBtn = qs('#signUpBtn');
+      const logoutBtn = qs('#logoutBtn');
+
+      if (isLoggedIn()) {
+        status.textContent = `${APP.state.session.username} · 4K פתוח`;
+        hero.textContent = 'פתוח למשתמש מחובר';
+        signInBtn.classList.add('hidden');
+        signUpBtn.classList.add('hidden');
+        logoutBtn.classList.remove('hidden');
+      } else {
+        status.textContent = 'אורח · 4K נעול';
+        hero.textContent = 'נעול לאורח';
+        signInBtn.classList.remove('hidden');
+        signUpBtn.classList.remove('hidden');
+        logoutBtn.classList.add('hidden');
+      }
+    }
+
+    function openAuth(mode = 'signin') {
+      APP.state.authMode = mode;
+      const title = qs('#authTitle');
+      const text = qs('#authText');
+      const submit = qs('#authSubmitBtn');
+      const switchText = qs('#authSwitchText');
+      const switchBtn = qs('#authSwitchBtn');
+      const hint = qs('#authHint');
+      const form = qs('#authForm');
+      form.reset();
+
+      if (mode === 'signin') {
+        title.textContent = 'התחברות';
+        text.textContent = 'התחבר כדי לפתוח את תוכן ה־4K ולשמור גישה מלאה.';
+        submit.textContent = 'התחברות';
+        switchText.textContent = 'אין לך חשבון?';
+        switchBtn.textContent = 'להרשמה';
+        hint.innerHTML = 'משתמש קיים מוכן כבר עכשיו: <strong>MOVIKO</strong> / <strong>MOVIKO4K</strong>';
+      } else {
+        title.textContent = 'הרשמה';
+        text.textContent = 'הרשמה מהירה יוצרת משתמש חדש ופותחת את תוכן ה־4K.';
+        submit.textContent = 'צור חשבון';
+        switchText.textContent = 'יש לך כבר חשבון?';
+        switchBtn.textContent = 'להתחברות';
+        hint.textContent = 'ההרשמה נשמרת מקומית בדפדפן הזה.';
+      }
+
+      qs('#authModal').classList.remove('hidden');
+      qs('#authUsername').focus();
+    }
+
+    function closeAuth() {
+      qs('#authModal').classList.add('hidden');
+    }
+
+    function handleAuthSubmit(e) {
+      e.preventDefault();
+      const username = qs('#authUsername').value.trim();
+      const password = qs('#authPassword').value.trim();
+      if (!username || !password) return;
+
+      const users = getUsers();
+      const existing = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+
+      if (APP.state.authMode === 'signin') {
+        if (!existing || existing.password !== password) {
+          alert('שם המשתמש או הסיסמה שגויים.');
+          return;
+        }
+        saveSession({ username: existing.username, premium4k: !!existing.premium4k });
+        closeAuth();
+        alert(`ברוך הבא ${existing.username}. תוכן 4K נפתח.`);
+        return;
+      }
+
+      if (existing) {
+        alert('שם המשתמש כבר קיים. בחר שם אחר או התחבר.');
+        return;
+      }
+
+      const newUser = { username, password, premium4k: true };
+      users.push(newUser);
+      saveUsers(users);
+      saveSession({ username: newUser.username, premium4k: true });
+      closeAuth();
+      alert('נרשמת בהצלחה. תוכן 4K נפתח עבורך.');
+    }
+
+    function renderFilters() {
+      const wrap = qs('#filtersWrap');
+      wrap.innerHTML = GENRES.map(genre => `
+        <button class="filter-chip ${genre === APP.state.filter ? 'active' : ''}" data-genre="${genre}">${genre}</button>
+      `).join('');
+
+      wrap.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          APP.state.filter = btn.dataset.genre;
+          renderFilters();
+          renderMovies();
+        });
+      });
+    }
+
+    function openDetails(movieId) {
+      const movie = MOVIES.find(m => m.id === movieId);
+      if (!movie) return;
+      APP.state.currentMovie = movie;
+      const sources = sourceTemplate(movie);
+      const modal = qs('#detailsModal');
+      modal.innerHTML = `
+        <div class="details-card">
+          <div class="details-hero">
+            <div class="details-poster" style="background-image:url('${movie.poster}')"></div>
+            <div class="details-body">
+              <button class="close-x" id="closeDetailsBtn">×</button>
+              <div class="eyebrow">${movie.genre} · ${movie.year}</div>
+              <h2 style="margin:0;font-size:clamp(30px,4vw,48px);line-height:1.03;letter-spacing:-0.04em;">${escapeHtml(movie.title)}</h2>
+              <div class="meta">
+                <span>⭐ ${movie.rating}</span>
+                <span>${movie.duration}</span>
+                <span>${canAccess4K() ? '4K פתוח' : '4K נעול לאורח'}</span>
+              </div>
+              <div class="description" style="min-height:0;font-size:16px;">${escapeHtml(movie.desc)}</div>
+              <div class="card-actions" style="grid-template-columns:repeat(3,1fr);">
+                <button class="btn btn-red" id="playNowBtn">Play</button>
+                <button class="btn btn-blue" id="watchTrailerBtn">Trailer</button>
+                <button class="btn btn-primary" id="saveMovieBtn">Add to Library</button>
+              </div>
+
+              <div style="margin-top:8px;">
+                <div class="section-head" style="margin-bottom:10px;"><h2 style="font-size:22px;">מקורות זמינים</h2></div>
+                <div class="source-list">
+                  ${sources.map((source, idx) => `
+                    <div class="source-item">
+                      <div>
+                        <div class="source-title">${idx === 0 ? 'ברירת מחדל' : 'אפשרות נוספת'} · ${source.title}</div>
+                        <div class="source-sub">משתמשים: ${usersText(source.users)} · כתוביות: ${source.subtitle} ${source.is4k ? '· פתוח רק למשתמשים רשומים' : ''}</div>
+                      </div>
+                      <button class="btn ${source.is4k ? 'btn-primary' : 'btn-dark'} play-source-btn" data-source-id="${source.id}">נגן</button>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
             </div>
           </div>
-        `;
-        // Attach action handlers
-        const playBtn = card.querySelector('.play-btn');
-        const trailerBtn = card.querySelector('.trailer-btn');
-        const addBtn = card.querySelector('.library-btn');
-        playBtn.addEventListener('click', () => handlePlay(movie));
-        trailerBtn.addEventListener('click', () => {
-          window.open(movie.trailer, '_blank');
-        });
-        addBtn.addEventListener('click', () => addToLibrary(movie));
-        container.appendChild(card);
+        </div>
+      `;
+      modal.classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      qs('#closeDetailsBtn').addEventListener('click', closeDetails);
+      qs('#playNowBtn').addEventListener('click', () => playMovie(movie.id, 0));
+      qs('#watchTrailerBtn').addEventListener('click', () => openTrailer(movie));
+      qs('#saveMovieBtn').addEventListener('click', () => addMovieToLibrary(movie));
+      modal.querySelectorAll('.play-source-btn').forEach((btn, idx) => btn.addEventListener('click', () => playMovie(movie.id, idx)));
+      modal.addEventListener('click', onDetailsBackdropClick);
+    }
+
+    function onDetailsBackdropClick(e) {
+      if (e.target.id === 'detailsModal') closeDetails();
+    }
+
+    function closeDetails() {
+      const modal = qs('#detailsModal');
+      modal.classList.add('hidden');
+      modal.innerHTML = '';
+      modal.removeEventListener('click', onDetailsBackdropClick);
+    }
+
+    function openTrailer(movie) {
+      const q = encodeURIComponent(`${movie.title} trailer`);
+      window.open(`https://www.youtube.com/results?search_query=${q}`, '_blank', 'noopener');
+    }
+
+    function addMovieToLibrary(movie) {
+      const lib = getLibrary();
+      if (lib.some(item => item.id === movie.id)) {
+        alert('הסרט כבר קיים בספריה.');
+        return;
+      }
+      lib.push(movie);
+      saveLibrary(lib);
+      alert('הסרט נוסף לספריה.');
+      renderLibrary();
+    }
+
+    function removeFromLibrary(movieId) {
+      const lib = getLibrary().filter(item => item.id !== movieId);
+      saveLibrary(lib);
+      renderLibrary();
+    }
+
+    function renderLibrary() {
+      const lib = getLibrary();
+      const wrap = qs('#libraryContent');
+      if (!lib.length) {
+        wrap.innerHTML = `<div class="empty-state">עדיין לא שמרת סרטים.</div>`;
+        return;
+      }
+      wrap.innerHTML = `
+        <div class="library-grid">
+          ${lib.map(movie => `
+            <div class="library-card">
+              <div class="mini-poster" style="background-image:url('${movie.poster}')"></div>
+              <div class="mini-body">
+                <strong>${escapeHtml(movie.title)}</strong>
+                <button class="btn btn-outline remove-library-btn" data-id="${movie.id}">הסר</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+      wrap.querySelectorAll('.remove-library-btn').forEach(btn => {
+        btn.addEventListener('click', () => removeFromLibrary(btn.dataset.id));
       });
     }
 
-    // Handle playing a movie: sort streams, select best one, and call your
-    // backend/player.  Shows the buffering overlay while preparing.  This
-    // function is a stub; integrate with your streaming engine here.
-    function handlePlay(movie) {
-      // Sort available streams according to resolution and user count
-      const sorted = sortStreams(movie.streams);
-      const selectedStream = sorted[0];
-      if (!selectedStream || !selectedStream.url) {
-        alert('אין מקור ניגון זמין לסרט זה');
+    function playMovie(movieId, sourceIndex = 0) {
+      const movie = MOVIES.find(m => m.id === movieId);
+      if (!movie) return;
+      const sources = sourceTemplate(movie);
+      const source = sources[sourceIndex] || sources[0];
+      if (source.is4k && !canAccess4K()) {
+        alert('תוכן 4K פתוח רק למשתמשים מחוברים.');
+        openAuth('signin');
         return;
       }
-      // Show buffering animation
-      const buffering = document.getElementById('buffering');
-      buffering.classList.remove('hidden');
-      // Simulate preparation (replace this with actual logic)
+
+      qs('#bufferModal').classList.remove('hidden');
       setTimeout(() => {
-        buffering.classList.add('hidden');
-        // TODO: integrate with real player; for now open the URL in new tab
-        window.open(selectedStream.url, '_blank');
-      }, 2000);
+        qs('#bufferModal').classList.add('hidden');
+        alert(`נבחר מקור: ${source.title}\nמשתמשים: ${usersText(source.users)}\nכאן מחברים את מנוע הניגון החוקי שלך.`);
+      }, 1500);
     }
 
-    /* =================== Splash Logic =================== */
-    const splashEl = document.getElementById('splash');
-    const splashVideo = document.getElementById('splashVideo');
-    const splashSoundBtn = document.getElementById('splashSoundBtn');
-    const mainHeader = document.getElementById('mainHeader');
-    const moviesContainer = document.getElementById('moviesContainer');
+    function renderMovies() {
+      const grid = qs('#moviesGrid');
+      const list = filteredMovies();
+      qs('#resultsCount').textContent = `${list.length} סרטים מוצגים`;
 
-    // Hide splash after video ends or after 5 seconds (whichever first).
-    let splashTimeout;
-    function hideSplash() {
-      clearTimeout(splashTimeout);
-      splashEl.classList.add('hidden');
-      mainHeader.classList.remove('hidden');
-      moviesContainer.classList.remove('hidden');
-    }
-    splashVideo.addEventListener('ended', hideSplash);
-    splashTimeout = setTimeout(hideSplash, 5000);
-
-    // If user clicks the sound button, unmute video and play again
-    splashSoundBtn.addEventListener('click', () => {
-      splashVideo.muted = false;
-      splashVideo.currentTime = 0;
-      splashVideo.play().catch(() => {});
-      splashSoundBtn.style.display = 'none';
-    });
-
-    /* =================== Library Modal Logic =================== */
-    const libraryModal = document.getElementById('libraryModal');
-    const openLibraryBtn = document.getElementById('openLibraryBtn');
-    const closeLibraryBtn = document.getElementById('closeLibraryBtn');
-
-    openLibraryBtn.addEventListener('click', () => {
-      renderLibrary();
-      libraryModal.classList.remove('hidden');
-    });
-    closeLibraryBtn.addEventListener('click', () => {
-      libraryModal.classList.add('hidden');
-    });
-
-    // Close modal when clicking outside of content
-    libraryModal.addEventListener('click', (e) => {
-      if (e.target === libraryModal) {
-        libraryModal.classList.add('hidden');
+      if (!list.length) {
+        grid.innerHTML = `<div class="panel empty-state" style="grid-column:1/-1;">לא נמצאו תוצאות.</div>`;
+        return;
       }
-    });
 
-    /* =================== Initialize =================== */
-    document.addEventListener('DOMContentLoaded', () => {
+      grid.innerHTML = list.map(movie => {
+        const lib = getLibrary();
+        const inLibrary = lib.some(item => item.id === movie.id);
+        return `
+          <article class="movie-card">
+            <div class="poster" style="background-image:url('${movie.poster}')">
+              <div class="poster-badges">
+                <span class="badge badge-gold">⭐ ${movie.rating}</span>
+                <span class="badge badge-blue">1080P</span>
+                ${canAccess4K() ? `<span class="badge badge-green">4K</span>` : `<span class="badge badge-red">4K נעול</span>`}
+              </div>
+              <div class="poster-title">${escapeHtml(movie.title)}</div>
+            </div>
+            <div class="card-body">
+              <div class="meta">
+                <span>${movie.genre}</span>
+                <span>${movie.year}</span>
+                <span>${movie.duration}</span>
+              </div>
+              <div class="description">${escapeHtml(movie.desc)}</div>
+              <div class="card-actions">
+                <button class="btn btn-red card-play" data-id="${movie.id}">Play</button>
+                <button class="btn btn-blue card-trailer" data-id="${movie.id}">Trailer</button>
+                <button class="btn ${inLibrary ? 'btn-green' : 'btn-primary'} card-library" data-id="${movie.id}">${inLibrary ? 'נשמר' : 'Add to Library'}</button>
+              </div>
+            </div>
+          </article>
+        `;
+      }).join('');
+
+      grid.querySelectorAll('.card-play').forEach(btn => btn.addEventListener('click', () => openDetails(btn.dataset.id)));
+      grid.querySelectorAll('.card-trailer').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const movie = MOVIES.find(m => m.id === btn.dataset.id);
+          if (movie) openTrailer(movie);
+        });
+      });
+      grid.querySelectorAll('.card-library').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const movie = MOVIES.find(m => m.id === btn.dataset.id);
+          if (movie) addMovieToLibrary(movie);
+        });
+      });
+    }
+
+    function bootSplash() {
+      const splash = qs('#MOVIKO_START.MP4h');
+      const video = qs('#MOVIKO_START.MP4Video');
+      const soundBtn = qs('#enableSplashSoundBtn');
+      const enterBtn = qs('#enterAppBtn');
+
+      const closeSplash = () => {
+        splash.classList.add('hidden');
+        qs('#appHeader').classList.remove('hidden');
+        qs('#appMain').classList.remove('hidden');
+      };
+
+      enterBtn.addEventListener('click', closeSplash);
+      soundBtn.addEventListener('click', async () => {
+        try {
+          video.muted = false;
+          video.currentTime = 0;
+          await video.play();
+          soundBtn.textContent = 'הפתיח מנגן עם קול';
+        } catch {
+          alert('הדפדפן עדיין חסם קול. לחץ שוב או השתמש בכפתור הכניסה.');
+        }
+      });
+
+      setTimeout(closeSplash, 4600);
+    }
+
+    function bindUi() {
+      qs('#searchInput').addEventListener('input', (e) => {
+        APP.state.query = e.target.value;
+        renderMovies();
+      });
+
+      qs('#signInBtn').addEventListener('click', () => openAuth('signin'));
+      qs('#signUpBtn').addEventListener('click', () => openAuth('signup'));
+      qs('#heroSignUpBtn').addEventListener('click', () => openAuth('signup'));
+      qs('#heroBrowseBtn').addEventListener('click', () => window.scrollTo({ top: 380, behavior: 'smooth' }));
+      qs('#libraryBtn').addEventListener('click', () => {
+        renderLibrary();
+        qs('#libraryModal').classList.remove('hidden');
+      });
+      qs('#closeLibraryModal').addEventListener('click', () => qs('#libraryModal').classList.add('hidden'));
+      qs('#libraryModal').addEventListener('click', (e) => {
+        if (e.target.id === 'libraryModal') qs('#libraryModal').classList.add('hidden');
+      });
+
+      qs('#closeAuthModal').addEventListener('click', closeAuth);
+      qs('#authCancelBtn').addEventListener('click', closeAuth);
+      qs('#authSwitchBtn').addEventListener('click', () => openAuth(APP.state.authMode === 'signin' ? 'signup' : 'signin'));
+      qs('#authForm').addEventListener('submit', handleAuthSubmit);
+      qs('#logoutBtn').addEventListener('click', () => {
+        saveSession(null);
+        alert('התנתקת. 4K שוב נעול לאורח.');
+      });
+    }
+
+    function init() {
+      getUsers();
+      APP.state.session = getSession();
+      bootSplash();
+      bindUi();
+      refreshAuthUi();
+      renderFilters();
       renderMovies();
-    });
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
 </html>

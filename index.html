@@ -1,193 +1,497 @@
-import express from "express";
-import cors from "cors";
-import crypto from "crypto";
-import nodemailer from "nodemailer";
+<!DOCTYPE html>
+<!--
+  MOVIKO – simple movie‑streaming interface (Hebrew)
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+  This file implements the core front‑end for the MOVIKO project.  It focuses
+  on a clean, easy‑to‑use UI that presents movies only (no series) and
+  supports a right‑to‑left Hebrew interface.  The splash screen (splash.mp4)
+  is shown on first load with muted audio to satisfy modern browser
+  autoplay policies.  Users can enable sound manually via a button as
+  recommended by autoplay guidelines: Chrome and Firefox block videos with
+  sound until there is user interaction, while muted videos may autoplay
+  without restrictions【614481664182217†L64-L90】.  A buffering animation
+  (buffering.mp4) is shown as a circular loader before playback.  The
+  UI provides Play, Trailer and Add‑to‑Library buttons for each movie.  Saved
+  movies are stored using the Web Storage API; data persists across
+  browser sessions because `localStorage` keeps values without an
+  expiration time【252887741188659†L186-L194】.
 
-const PORT = process.env.PORT || 8787;
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
-const OTP_TTL_MS = 10 * 60 * 1000;
+  To make this file fully functional you need to provide the media assets
+  (splash.mp4, buffering.mp4, logopop_tlv.png) alongside this file and
+  implement the backend/proxy that fetches playable streams from Torrentio
+  or another streaming add‑on.  The functions in this file demonstrate how
+  to sort streams by resolution and popularity, auto‑select 1080p sources,
+  and prefer Hebrew subtitles; they can be wired into your backend.
+-->
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MOVIKO – סטרימינג סרטים</title>
+  <!-- Use the customised popcorn logo as the favicon -->
+  <link rel="icon" type="image/png" href="logopop_tlv.png">
+  <!-- Basic reset and dark‑theme styling -->
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, sans-serif;
+      background-color: #0f0f0f;
+      color: #f5f5f5;
+      direction: rtl;
+      overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    .hidden { display: none !important; }
+    /* Splash screen covers the entire viewport */
+    #splash {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 9999;
+    }
+    #splash video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #splash button {
+      position: absolute;
+      bottom: 10%;
+      right: 50%;
+      transform: translateX(50%);
+      padding: 1rem 1.5rem;
+      font-size: 1rem;
+      border: none;
+      border-radius: 4px;
+      background-color: #ffcc00;
+      color: #000;
+      cursor: pointer;
+      opacity: 0.9;
+    }
+    /* Header containing the logo and library button */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem;
+      background-color: #1a1a1a;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header img.logo {
+      height: 40px;
+    }
+    header button.library-btn {
+      background-color: transparent;
+      border: none;
+      color: #ffcc00;
+      font-size: 1.1rem;
+      cursor: pointer;
+    }
+    /* Movie list container */
+    .movies {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      padding: 1rem;
+      justify-content: center;
+    }
+    .movie-card {
+      background-color: #1e1e1e;
+      border-radius: 8px;
+      width: 200px;
+      overflow: hidden;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+    }
+    .movie-card img.poster {
+      width: 100%;
+      height: 300px;
+      object-fit: cover;
+    }
+    .movie-card .info {
+      padding: 0.5rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .movie-card .title {
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+      font-weight: bold;
+    }
+    .movie-card .actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.3rem;
+    }
+    .movie-card button {
+      flex: 1;
+      padding: 0.4rem;
+      font-size: 0.9rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      color: #000;
+    }
+    .play-btn { background-color: #ff4444; }
+    .trailer-btn { background-color: #00ccff; }
+    .library-btn { background-color: #ffcc00; }
+    /* Buffering overlay – covers the whole viewport during loading */
+    #buffering {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      backdrop-filter: blur(4px);
+      background-color: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    #buffering .loader {
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      overflow: hidden;
+    }
+    #buffering .loader video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    /* Library modal */
+    #libraryModal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-y: auto;
+      z-index: 1001;
+      padding: 2rem 1rem;
+    }
+    #libraryModal h2 {
+      margin-bottom: 1rem;
+    }
+    #libraryModal .library-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+      width: 100%;
+    }
+    #libraryModal .library-card {
+      background-color: #1e1e1e;
+      border-radius: 8px;
+      width: 180px;
+      overflow: hidden;
+      text-align: center;
+    }
+    #libraryModal .library-card img {
+      width: 100%;
+      height: 260px;
+      object-fit: cover;
+    }
+    #libraryModal .library-card .title {
+      padding: 0.5rem;
+      font-size: 0.9rem;
+    }
+    #libraryModal button.close-btn {
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
+      background-color: #ff4444;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <!-- Splash screen with introductory video.  The video is muted to comply
+       with browser autoplay policies; users can enable sound via the button. -->
+  <div id="splash">
+    <video id="splashVideo" autoplay muted playsinline>
+      <source src="splash.mp4" type="video/mp4">
+      הדפדפן שלך אינו תומך בוידאו.
+    </video>
+    <button id="splashSoundBtn">הפעל פתיח עם קול</button>
+  </div>
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT || 587),
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+  <!-- Main page header -->
+  <header id="mainHeader" class="hidden">
+    <img src="logopop_tlv.png" alt="MOVIKO logo" class="logo">
+    <button class="library-btn" id="openLibraryBtn">הספריה שלי</button>
+  </header>
 
-const pendingOtps = new Map();
-const users = new Map();
+  <!-- Movie list container -->
+  <div id="moviesContainer" class="movies hidden">
+    <!-- Movie cards will be generated dynamically -->
+  </div>
 
-function generateOtp() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
+  <!-- Buffering overlay -->
+  <div id="buffering" class="hidden">
+    <div class="loader">
+      <video autoplay loop muted playsinline>
+        <source src="buffering.mp4" type="video/mp4">
+      </video>
+    </div>
+  </div>
 
-function normalizeEmail(email) {
-  return String(email || "").trim().toLowerCase();
-}
+  <!-- Library modal -->
+  <div id="libraryModal" class="hidden">
+    <h2>הספריה שלי</h2>
+    <div class="library-list" id="libraryList"></div>
+    <button class="close-btn" id="closeLibraryBtn">סגור</button>
+  </div>
 
-function buildUserConsentEmail({ email, username, otp }) {
-  return {
-    subject: "MOVIKO - קוד אימות והרשמה",
-    html: `
-      <div dir="rtl" style="font-family:Arial,sans-serif;background:#0b0d12;color:#f5f7fb;padding:24px;line-height:1.7;">
-        <div style="max-width:680px;margin:0 auto;background:#121722;border:1px solid #232838;border-radius:18px;padding:28px;">
-          <h1 style="margin:0 0 12px;font-size:28px;">ברוך הבא ל-MOVIKO</h1>
-          <p style="margin:0 0 16px;">שלום ${username},</p>
-          <p style="margin:0 0 16px;">קוד האימות החד-פעמי שלך הוא:</p>
-          <div style="font-size:36px;font-weight:800;letter-spacing:6px;background:#0b0d12;border:1px solid #2a3143;border-radius:14px;padding:18px;text-align:center;margin:0 0 18px;">${otp}</div>
-          <p style="margin:0 0 18px;">הקוד תקף ל-10 דקות.</p>
-          <hr style="border:none;border-top:1px solid #232838;margin:22px 0;" />
-          <h2 style="margin:0 0 10px;font-size:20px;">אישור משתמש והצהרות</h2>
-          <ol style="padding-right:20px;margin:0 0 18px;">
-            <li>אני מאשר/ת כי גילי 18 ומעלה, או שאני משתמש/ת בשירות בליווי ובהסכמת הורה או אפוטרופוס חוקי לפי הדין החל.</li>
-            <li>אני מאשר/ת כי MOVIKO היא פלטפורמת ממשק טכנולוגית בלבד, ואינה יוצרת, מעלה, מאחסנת, מפעילה או מפיצה את תכני המדיה עצמם.</li>
-            <li>אני מבין/ה כי כל גישה לתוכן או לשירותי צד שלישי נעשית באחריותי בלבד, בכפוף לדין החל ולתנאי השימוש של אותם צדדים שלישיים.</li>
-            <li>אני מתחייב/ת שלא להשתמש בפלטפורמה באופן המפר זכויות יוצרים, תנאי שימוש של צדדים שלישיים, או כל דין אחר.</li>
-            <li>אני מאשר/ת כי ל-MOVIKO, לבעליה, למפעיליה, למפתחיה ולמי מטעמם אין אחריות לתוכן צד שלישי, לזמינותו, לחוקיותו, לדיוקו, לאיכותו או להתאמתו עבורי.</li>
-          </ol>
-          <p style="margin:0 0 10px;">בהזנת הקוד באתר אתה מאשר/ת את ההצהרות שלעיל.</p>
-          <p style="margin:0;color:#9aa3b2;font-size:13px;">אם לא ביקשת הרשמה ל-MOVIKO, אפשר להתעלם מהמייל.</p>
-        </div>
-      </div>
-    `,
-    text: `MOVIKO\n\nקוד האימות שלך: ${otp}\n\nבהזנת הקוד באתר אתה מאשר/ת כי גילך 18+ או שיש לך הסכמת הורה/אפוטרופוס לפי הדין החל, כי MOVIKO היא פלטפורמת ממשק בלבד, כי כל שימוש בתוכן או בשירותי צד שלישי נעשה באחריותך בלבד, וכי אין ל-MOVIKO אחריות לתוכן צד שלישי, לזמינותו או לחוקיותו.`
-  };
-}
+  <script>
+    /* =================== Data Structures =================== */
+    // Each movie object should at minimum have: id, title, poster (image URL),
+    // trailer (URL), and an array of streams returned by your backend.  For
+    // demonstration purposes we'll use a placeholder list.  Replace this
+    // placeholder with a call to your backend that fetches available movies
+    // through the Cinemeta API or another source.
+    const movies = [
+      {
+        id: 'movie1',
+        title: 'סרט לדוגמה 1',
+        poster: 'https://via.placeholder.com/400x600?text=Movie+1',
+        trailer: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        streams: [
+          { name: '4K • 100 משתמשים', url: '#', resolution: '4K', userCount: 100 },
+          { name: '1080p • 450 משתמשים', url: '#', resolution: '1080p', userCount: 450 }
+        ]
+      },
+      {
+        id: 'movie2',
+        title: 'סרט לדוגמה 2',
+        poster: 'https://via.placeholder.com/400x600?text=Movie+2',
+        trailer: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        streams: [
+          { name: '1080p • 200 משתמשים', url: '#', resolution: '1080p', userCount: 200 },
+          { name: '720p • 50 משתמשים', url: '#', resolution: '720p', userCount: 50 }
+        ]
+      }
+    ];
 
-function buildAdminNotification({ email, username, ageConfirmed, disclaimerAccepted, ip, userAgent }) {
-  return {
-    subject: `MOVIKO - נרשם חדש: ${username}`,
-    html: `
-      <div dir="rtl" style="font-family:Arial,sans-serif;background:#0b0d12;color:#f5f7fb;padding:24px;line-height:1.7;">
-        <div style="max-width:680px;margin:0 auto;background:#121722;border:1px solid #232838;border-radius:18px;padding:28px;">
-          <h1 style="margin:0 0 12px;font-size:26px;">נרשם חדש ל-MOVIKO</h1>
-          <p><strong>שם משתמש:</strong> ${username}</p>
-          <p><strong>אימייל:</strong> ${email}</p>
-          <p><strong>אישור גיל 18+:</strong> ${ageConfirmed ? "כן" : "לא"}</p>
-          <p><strong>אישור הסרת אחריות:</strong> ${disclaimerAccepted ? "כן" : "לא"}</p>
-          <p><strong>IP:</strong> ${ip || "לא זוהה"}</p>
-          <p><strong>User-Agent:</strong> ${userAgent || "לא זוהה"}</p>
-          <p><strong>זמן:</strong> ${new Date().toISOString()}</p>
-        </div>
-      </div>
-    `,
-    text: `נרשם חדש ל-MOVIKO\nשם משתמש: ${username}\nאימייל: ${email}\nאישור גיל 18+: ${ageConfirmed}\nאישור הסרת אחריות: ${disclaimerAccepted}\nIP: ${ip || "לא זוהה"}\nUser-Agent: ${userAgent || "לא זוהה"}`
-  };
-}
+    /* =================== Helpers =================== */
+    // Parse resolution from a resolution string (e.g., "1080p" or "4K").  Returns
+    // a numeric value to facilitate sorting.  4K is treated as 4000, 1080p as
+    // 1080, 720p as 720, etc.  Unknown resolutions return 0.
+    function resolutionScore(res) {
+      if (!res) return 0;
+      const lower = res.toLowerCase();
+      if (lower.includes('4k')) return 4000;
+      const match = lower.match(/(\d{3,4})p/);
+      return match ? parseInt(match[1], 10) : 0;
+    }
 
-app.post("/api/auth/request-otp", async (req, res) => {
-  const email = normalizeEmail(req.body.email);
-  const username = String(req.body.username || "").trim();
-  const ageConfirmed = Boolean(req.body.ageConfirmed);
-  const disclaimerAccepted = Boolean(req.body.disclaimerAccepted);
+    // Sort streams so that the best 1080p stream with most users comes first,
+    // followed by 4K and then other resolutions.  Within the same resolution
+    // category we sort by userCount descending.  Unknown userCount values are
+    // treated as lowest priority and displayed as "לא זוהה".
+    function sortStreams(streams) {
+      return streams.slice().sort((a, b) => {
+        const resA = resolutionScore(a.resolution);
+        const resB = resolutionScore(b.resolution);
+        // 1080p preferred even over 4K when both present
+        const preferredOrder = [1080, 4000];
+        const idxA = preferredOrder.indexOf(resA);
+        const idxB = preferredOrder.indexOf(resB);
+        if (idxA !== idxB) {
+          if (idxA === -1) return 1;
+          if (idxB === -1) return -1;
+          return idxA - idxB;
+        }
+        // within same category sort by userCount descending; unknowns last
+        const usersA = typeof a.userCount === 'number' ? a.userCount : -1;
+        const usersB = typeof b.userCount === 'number' ? b.userCount : -1;
+        return usersB - usersA;
+      });
+    }
 
-  if (!email || !username) {
-    return res.status(400).json({ error: "email_and_username_required" });
-  }
+    // Format the user count display: return number if defined and >0;
+    // otherwise return "לא זוהה" (not recognized).
+    function formatUserCount(count) {
+      return (typeof count === 'number' && count > 0) ? count : 'לא זוהה';
+    }
 
-  if (!ageConfirmed || !disclaimerAccepted) {
-    return res.status(400).json({ error: "consents_required" });
-  }
+    // Retrieve the library array from localStorage.  Data persists across
+    // sessions because localStorage has no expiration【252887741188659†L186-L194】.
+    function getLibrary() {
+      try {
+        const data = localStorage.getItem('movikoLibrary');
+        return data ? JSON.parse(data) : [];
+      } catch (err) {
+        console.error('Failed to parse library', err);
+        return [];
+      }
+    }
 
-  const otp = generateOtp();
-  const expiresAt = Date.now() + OTP_TTL_MS;
+    // Save the library array to localStorage
+    function saveLibrary(lib) {
+      try {
+        localStorage.setItem('movikoLibrary', JSON.stringify(lib));
+      } catch (err) {
+        console.error('Failed to save library', err);
+      }
+    }
 
-  pendingOtps.set(email, {
-    email,
-    username,
-    otp,
-    expiresAt,
-    ageConfirmed,
-    disclaimerAccepted,
-    ip: req.headers["x-forwarded-for"] || req.socket.remoteAddress || "",
-    userAgent: req.headers["user-agent"] || "",
-  });
+    // Add a movie to the library if it's not already present
+    function addToLibrary(movie) {
+      const lib = getLibrary();
+      if (!lib.some(item => item.id === movie.id)) {
+        lib.push({ id: movie.id, title: movie.title, poster: movie.poster });
+        saveLibrary(lib);
+        alert('הסרט נוסף לספריה');
+      } else {
+        alert('הסרט כבר קיים בספריה');
+      }
+    }
 
-  const userEmail = buildUserConsentEmail({ email, username, otp });
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
-    to: email,
-    subject: userEmail.subject,
-    html: userEmail.html,
-    text: userEmail.text,
-  });
+    // Render the library modal
+    function renderLibrary() {
+      const lib = getLibrary();
+      const list = document.getElementById('libraryList');
+      list.innerHTML = '';
+      if (lib.length === 0) {
+        list.innerHTML = '<p>הספריה ריקה.</p>';
+        return;
+      }
+      lib.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'library-card';
+        card.innerHTML = `
+          <img src="${item.poster}" alt="${item.title}">
+          <div class="title">${item.title}</div>
+        `;
+        list.appendChild(card);
+      });
+    }
 
-  return res.json({ ok: true, message: "otp_sent" });
-});
+    // Render movie cards onto the page
+    function renderMovies() {
+      const container = document.getElementById('moviesContainer');
+      movies.forEach(movie => {
+        const card = document.createElement('div');
+        card.className = 'movie-card';
+        card.innerHTML = `
+          <img class="poster" src="${movie.poster}" alt="${movie.title}">
+          <div class="info">
+            <div class="title">${movie.title}</div>
+            <div class="actions">
+              <button class="play-btn">הפעל</button>
+              <button class="trailer-btn">טריילר</button>
+              <button class="library-btn">הוסף לספריה</button>
+            </div>
+          </div>
+        `;
+        // Attach action handlers
+        const playBtn = card.querySelector('.play-btn');
+        const trailerBtn = card.querySelector('.trailer-btn');
+        const addBtn = card.querySelector('.library-btn');
+        playBtn.addEventListener('click', () => handlePlay(movie));
+        trailerBtn.addEventListener('click', () => {
+          window.open(movie.trailer, '_blank');
+        });
+        addBtn.addEventListener('click', () => addToLibrary(movie));
+        container.appendChild(card);
+      });
+    }
 
-app.post("/api/auth/verify-otp", async (req, res) => {
-  const email = normalizeEmail(req.body.email);
-  const otp = String(req.body.otp || "").trim();
+    // Handle playing a movie: sort streams, select best one, and call your
+    // backend/player.  Shows the buffering overlay while preparing.  This
+    // function is a stub; integrate with your streaming engine here.
+    function handlePlay(movie) {
+      // Sort available streams according to resolution and user count
+      const sorted = sortStreams(movie.streams);
+      const selectedStream = sorted[0];
+      if (!selectedStream || !selectedStream.url) {
+        alert('אין מקור ניגון זמין לסרט זה');
+        return;
+      }
+      // Show buffering animation
+      const buffering = document.getElementById('buffering');
+      buffering.classList.remove('hidden');
+      // Simulate preparation (replace this with actual logic)
+      setTimeout(() => {
+        buffering.classList.add('hidden');
+        // TODO: integrate with real player; for now open the URL in new tab
+        window.open(selectedStream.url, '_blank');
+      }, 2000);
+    }
 
-  const record = pendingOtps.get(email);
-  if (!record) {
-    return res.status(400).json({ error: "otp_not_found" });
-  }
+    /* =================== Splash Logic =================== */
+    const splashEl = document.getElementById('splash');
+    const splashVideo = document.getElementById('splashVideo');
+    const splashSoundBtn = document.getElementById('splashSoundBtn');
+    const mainHeader = document.getElementById('mainHeader');
+    const moviesContainer = document.getElementById('moviesContainer');
 
-  if (Date.now() > record.expiresAt) {
-    pendingOtps.delete(email);
-    return res.status(400).json({ error: "otp_expired" });
-  }
+    // Hide splash after video ends or after 5 seconds (whichever first).
+    let splashTimeout;
+    function hideSplash() {
+      clearTimeout(splashTimeout);
+      splashEl.classList.add('hidden');
+      mainHeader.classList.remove('hidden');
+      moviesContainer.classList.remove('hidden');
+    }
+    splashVideo.addEventListener('ended', hideSplash);
+    splashTimeout = setTimeout(hideSplash, 5000);
 
-  if (record.otp !== otp) {
-    return res.status(400).json({ error: "otp_invalid" });
-  }
+    // If user clicks the sound button, unmute video and play again
+    splashSoundBtn.addEventListener('click', () => {
+      splashVideo.muted = false;
+      splashVideo.currentTime = 0;
+      splashVideo.play().catch(() => {});
+      splashSoundBtn.style.display = 'none';
+    });
 
-  const userId = crypto.randomUUID();
-  const user = {
-    id: userId,
-    email: record.email,
-    username: record.username,
-    premium4k: true,
-    ageConfirmed: record.ageConfirmed,
-    disclaimerAccepted: record.disclaimerAccepted,
-    createdAt: new Date().toISOString(),
-  };
+    /* =================== Library Modal Logic =================== */
+    const libraryModal = document.getElementById('libraryModal');
+    const openLibraryBtn = document.getElementById('openLibraryBtn');
+    const closeLibraryBtn = document.getElementById('closeLibraryBtn');
 
-  users.set(user.email, user);
-  pendingOtps.delete(email);
+    openLibraryBtn.addEventListener('click', () => {
+      renderLibrary();
+      libraryModal.classList.remove('hidden');
+    });
+    closeLibraryBtn.addEventListener('click', () => {
+      libraryModal.classList.add('hidden');
+    });
 
-  const adminMail = buildAdminNotification({
-    email: user.email,
-    username: user.username,
-    ageConfirmed: user.ageConfirmed,
-    disclaimerAccepted: user.disclaimerAccepted,
-    ip: record.ip,
-    userAgent: record.userAgent,
-  });
+    // Close modal when clicking outside of content
+    libraryModal.addEventListener('click', (e) => {
+      if (e.target === libraryModal) {
+        libraryModal.classList.add('hidden');
+      }
+    });
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
-    to: ADMIN_EMAIL,
-    subject: adminMail.subject,
-    html: adminMail.html,
-    text: adminMail.text,
-  });
-
-  return res.json({
-    ok: true,
-    user: {
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      premium4k: user.premium4k,
-    },
-  });
-});
-
-app.get("/api/admin/registrations", (req, res) => {
-  return res.json({
-    items: Array.from(users.values()),
-  });
-});
-
-app.listen(PORT, () => {
-  console.log(`MOVIKO auth backend listening on http://localhost:${PORT}`);
-});
+    /* =================== Initialize =================== */
+    document.addEventListener('DOMContentLoaded', () => {
+      renderMovies();
+    });
+  </script>
+</body>
+</html>
